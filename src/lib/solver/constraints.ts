@@ -7,8 +7,20 @@ export type AllowedClock = (typeof ALLOWED_CLOCKS)[number];
 
 const EPS = 1e-9;
 
+/** Machine group sizes that can be fed equally with nested 1/2 and 1/3 splitters. */
+export const SPLITTER_FRIENDLY_COUNTS: readonly number[] = (() => {
+  const set = new Set<number>();
+  for (let a = 0; a <= 6; a++) {
+    for (let b = 0; b <= 4; b++) {
+      const n = 2 ** a * 3 ** b;
+      if (n <= 64) set.add(n);
+    }
+  }
+  return [...set].sort((x, y) => x - y);
+})();
+
 export interface MachineConfig {
-  /** Physical building count */
+  /** Physical building count (always 2^a * 3^b) */
   machines: number;
   /** Uniform clock speed 0–1 */
   clock: AllowedClock;
@@ -22,9 +34,17 @@ export function ceilEffectiveMachines(exact: number): number {
   return Math.ceil(exact * 4 - EPS) / 4;
 }
 
+export function isSplitterFriendlyCount(n: number): boolean {
+  if (n <= 0 || !Number.isFinite(n)) return false;
+  const rounded = Math.round(n);
+  if (Math.abs(n - rounded) > EPS) return false;
+  return SPLITTER_FRIENDLY_COUNTS.includes(rounded);
+}
+
 /**
- * Represent an effective machine count using whole buildings at an allowed clock.
- * Prefers minimal overshoot, then fewer buildings, then higher clock.
+ * Represent an effective machine count using a splitter-friendly building count
+ * at an allowed clock. Prefers minimal overshoot, then fewer buildings, then
+ * higher clock.
  */
 export function representMachines(effectiveMachines: number): MachineConfig {
   const effective = ceilEffectiveMachines(effectiveMachines);
@@ -33,29 +53,36 @@ export function representMachines(effectiveMachines: number): MachineConfig {
   }
 
   let best: MachineConfig | null = null;
-  for (const clock of ALLOWED_CLOCKS) {
-    const machines = Math.ceil(effective / clock - EPS);
-    const achieved = machines * clock;
-    if (achieved + EPS < effective) continue;
-    const candidate: MachineConfig = {
-      machines,
-      clock,
-      effectiveMachines: achieved,
-    };
-    if (
-      !best ||
-      candidate.effectiveMachines < best.effectiveMachines - EPS ||
-      (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
-        candidate.machines < best.machines) ||
-      (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
-        candidate.machines === best.machines &&
-        candidate.clock > best.clock)
-    ) {
-      best = candidate;
+  for (const machines of SPLITTER_FRIENDLY_COUNTS) {
+    for (const clock of ALLOWED_CLOCKS) {
+      const achieved = machines * clock;
+      if (achieved + EPS < effective) continue;
+      const candidate: MachineConfig = {
+        machines,
+        clock,
+        effectiveMachines: achieved,
+      };
+      if (
+        !best ||
+        candidate.effectiveMachines < best.effectiveMachines - EPS ||
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
+          EPS &&
+          candidate.machines < best.machines) ||
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
+          EPS &&
+          candidate.machines === best.machines &&
+          candidate.clock > best.clock)
+      ) {
+        best = candidate;
+      }
     }
   }
 
-  const machines = Math.ceil(effective / 0.25 - EPS);
+  // Fallback: next friendly count at 25%
+  const minMachines = Math.ceil(effective / 0.25 - EPS);
+  const machines =
+    SPLITTER_FRIENDLY_COUNTS.find((n) => n >= minMachines) ??
+    SPLITTER_FRIENDLY_COUNTS[SPLITTER_FRIENDLY_COUNTS.length - 1]!;
   return (
     best ?? {
       machines,
@@ -77,84 +104,91 @@ export function quantizeItemRate(itemId: ItemId, desiredRate: number): number {
   return config.effectiveMachines * base;
 }
 
-/** Next discrete step size (one 25% clock quantum) for an item. */
+/**
+ * Next discrete step for an item: prefer growing by one splitter-friendly
+ * machine quantum at the item's recipe rate.
+ */
 export function itemRateStep(itemId: ItemId): number {
   const recipe = getRecipeForProduct(itemId);
   if (!recipe) return 1;
+  // Smallest positive increase from adding 0.25 effective on a friendly count
+  // is still one 25% clock quantum of a single machine.
   return recipePrimaryOutputPerMinute(recipe) * 0.25;
 }
 
-function gcd(a: number, b: number): number {
-  let x = Math.abs(Math.round(a));
-  let y = Math.abs(Math.round(b));
-  while (y) {
-    const t = y;
-    y = x % y;
-    x = t;
-  }
-  return x || 1;
-}
-
 /**
- * True if `part/whole` reduces to a fraction whose denominator is 2^a * 3^b
- * (buildable with 1/2 and 1/3 splitters).
+ * True if `part/whole` is (within float tolerance) a fraction whose denominator
+ * is 2^a * 3^b — buildable with nested 1/2 and 1/3 splitters (e.g. 1/12).
  */
 export function isSplitterFriendlyRatio(part: number, whole: number): boolean {
   if (whole <= EPS) return part <= EPS;
   if (part <= EPS) return true;
   if (part > whole + EPS) return false;
 
-  const scale = 1000;
-  let p = Math.round(part * scale);
-  let w = Math.round(whole * scale);
-  if (p < 0 || w <= 0 || p > w) return false;
-
-  const g = gcd(p, w);
-  p /= g;
-  w /= g;
-
-  while (w % 2 === 0) w /= 2;
-  while (w % 3 === 0) w /= 3;
-  return w === 1;
+  const ratio = part / whole;
+  for (const den of SPLITTER_FRIENDLY_COUNTS) {
+    const num = Math.round(ratio * den);
+    if (num < 0 || num > den) continue;
+    if (Math.abs(ratio - num / den) <= 1e-9) return true;
+  }
+  return false;
 }
 
-/** Practical splitter-tree denominators (1/2 and 1/3 combinations). */
-const SIMPLE_SPLIT_DENS = [
-  1, 2, 3, 4, 6, 8, 9, 12, 16, 18, 24, 27, 32, 36,
-] as const;
-
 /**
- * Snap a desired share of `whole` down to the largest whole-number rate that
- * is ≤ desired and forms a simple 2^a·3^b fraction of `whole`.
+ * Snap a desired share of `whole` down to the largest amount ≤ desired that
+ * forms a 2^a·3^b fraction of `whole` (nested 1/2 and 1/3 splitters, e.g. 1/12).
  */
 export function snapSplitterShare(desired: number, whole: number): number {
   if (desired <= EPS || whole <= EPS) return 0;
   const target = Math.min(desired, whole);
-  const wholeInt = Math.round(whole);
-  // Prefer integer item/min shares when the pool is (near) integer
-  const useInts = Math.abs(whole - wholeInt) < 1e-6;
+  if (isSplitterFriendlyRatio(target, whole)) return target;
 
   let best = 0;
-  for (const den of SIMPLE_SPLIT_DENS) {
-    for (let num = den; num >= 0; num--) {
-      let share = (whole * num) / den;
-      if (useInts) share = Math.round(share);
-      if (share > target + EPS) continue;
-      if (share > best + EPS && isSplitterFriendlyRatio(share, whole)) {
-        best = share;
+  for (const den of SPLITTER_FRIENDLY_COUNTS) {
+    const maxNum = Math.min(den, Math.floor((target * den) / whole + EPS));
+    for (let num = maxNum; num >= 1; num--) {
+      const share = (whole * num) / den;
+      if (share <= target + EPS) {
+        if (share > best + EPS) best = share;
+        break;
       }
-      break;
     }
   }
-
-  // Fallback: scan integer shares downward
-  if (useInts) {
-    for (let share = Math.floor(target + EPS); share >= 0; share--) {
-      if (isSplitterFriendlyRatio(share, whole)) return share;
-    }
-  }
-
   return best;
+}
+
+/**
+ * Snap an excess branch so excess/(downstream+excess) is a 2^a·3^b fraction.
+ * Chooses the largest excess ≤ desired that satisfies the ratio.
+ */
+export function snapExcessBranch(
+  desiredExcess: number,
+  downstreamDemand: number,
+): number {
+  if (desiredExcess <= EPS) return 0;
+  const downstream = Math.max(0, downstreamDemand);
+
+  // Pure excess with no shared downstream consumers — any rate is fine
+  if (downstream <= EPS) return desiredExcess;
+
+  let best = 0;
+  for (const den of SPLITTER_FRIENDLY_COUNTS) {
+    for (let num = 1; num < den; num++) {
+      const excess = (num * downstream) / (den - num);
+      if (excess <= desiredExcess + EPS && excess > best + EPS) {
+        best = excess;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Given a parent belt rate, return the largest child rate ≤ desired that can
+ * be split with nested 1/2 and 1/3 splitters.
+ */
+export function snapChildFromParent(desired: number, parentRate: number): number {
+  return snapSplitterShare(desired, parentRate);
 }
 
 export function recipeDepth(

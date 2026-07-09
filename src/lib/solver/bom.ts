@@ -5,6 +5,7 @@ import {
   recipePrimaryOutputPerMinute,
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
+import { representMachines } from "./constraints";
 
 const EPS = 1e-9;
 
@@ -16,8 +17,9 @@ export function addRate(map: RateMap, item: ItemId, amount: number): void {
 }
 
 /**
- * Expand demand for `itemId` at `rate` items/min into exact recipe crafts/min
- * and scarce raw consumption (no mid-tree machine rounding).
+ * Expand demand for `itemId` at `rate` items/min into recipe crafts/min
+ * and scarce raw consumption. Each stage is rounded up to a splitter-friendly
+ * machine count (2^a·3^b) at an allowed clock (100/75/50/25%).
  */
 export function expandDemandToMaps(
   itemId: ItemId,
@@ -55,8 +57,10 @@ export function expandDemandToMaps(
   }
 
   const outputPerMinutePerMachine = recipePrimaryOutputPerMinute(recipe);
-  const machinesNeeded = rate / outputPerMinutePerMachine;
-  const craftsPerMinute = machinesNeeded * recipeCyclesPerMinute(recipe);
+  const exactMachines = rate / outputPerMinutePerMachine;
+  const config = representMachines(exactMachines);
+  const craftsPerMinute =
+    config.effectiveMachines * recipeCyclesPerMinute(recipe);
 
   recipeCraftsPerMin.set(
     recipe.id,
@@ -77,22 +81,53 @@ export function expandDemandToMaps(
   stack.delete(itemId);
 }
 
-/** Exact scarce raw items/min required to produce 1 item/min of `itemId`. */
+/**
+ * Exact (non-quantized) scarce raw items/min for 1 item/min of `itemId`.
+ * Used for continuous leftover scaling before quantization.
+ */
 export function exactRawCoefficients(
   itemId: ItemId,
 ): Partial<Record<ItemId, number>> {
-  const raws: RateMap = new Map();
-  const recipeCrafts = new Map<string, number>();
-  expandDemandToMaps(itemId, 1, recipeCrafts, raws);
-  const result: Partial<Record<ItemId, number>> = {};
-  for (const id of scarceRawIds) {
-    const v = raws.get(id) ?? 0;
-    if (v > EPS) result[id] = v;
-  }
-  return result;
+  return exactExpandCoeffs(itemId, 1);
 }
 
-/** Alias used by tests / public API. */
+function exactExpandCoeffs(
+  itemId: ItemId,
+  rate: number,
+  stack: Set<ItemId> = new Set(),
+): Partial<Record<ItemId, number>> {
+  const item = itemById[itemId];
+  if (!item) return {};
+  if (item.isRaw) {
+    if (item.isUnlimited) return {};
+    return { [itemId]: rate };
+  }
+  if (stack.has(itemId)) {
+    throw new Error(`Cyclic recipe dependency involving ${itemId}`);
+  }
+  const recipe = getRecipeForProduct(itemId);
+  if (!recipe) return {};
+  const primary = recipe.outputs.find((o) => o.item === itemId);
+  if (!primary) return {};
+
+  const craftsPerMin = rate / primary.amount;
+
+  stack.add(itemId);
+  const out: Partial<Record<ItemId, number>> = {};
+  for (const input of recipe.inputs) {
+    const child = exactExpandCoeffs(
+      input.item,
+      input.amount * craftsPerMin,
+      stack,
+    );
+    for (const [k, v] of Object.entries(child) as [ItemId, number][]) {
+      out[k] = (out[k] ?? 0) + v;
+    }
+  }
+  stack.delete(itemId);
+  return out;
+}
+
 export function rawCoefficients(
   itemId: ItemId,
 ): Partial<Record<ItemId, number>> {
@@ -116,3 +151,5 @@ export function scaleRateMap(map: RateMap, factor: number): RateMap {
   }
   return out;
 }
+
+export { scarceRawIds };

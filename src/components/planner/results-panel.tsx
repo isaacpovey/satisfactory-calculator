@@ -158,7 +158,8 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
         <CardHeader className="border-b">
           <CardTitle>Machines</CardTitle>
           <CardDescription>
-            Whole buildings at 100% / 75% / 50% / 25% clock only.
+            Whole buildings in 2ⁿ·3ᵐ groups (equal 1/2 & 1/3 manifolds) at
+            100% / 75% / 50% / 25% clock.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">

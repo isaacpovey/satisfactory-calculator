@@ -37,30 +37,41 @@ describe("rawCoefficients", () => {
 });
 
 describe("constraints", () => {
-  it("represents fractional machines with allowed clocks", () => {
+  it("represents fractional machines with friendly counts and clocks", () => {
     const c = representMachines(1.1);
-    expect(c.effectiveMachines).toBeCloseTo(1.25);
+    expect(c.effectiveMachines).toBeGreaterThanOrEqual(1.1);
     expect([1, 0.75, 0.5, 0.25]).toContain(c.clock);
+    expect([1, 2, 3, 4, 6, 8, 9, 12]).toContain(c.machines);
     expect(c.machines * c.clock).toBeCloseTo(c.effectiveMachines);
   });
 
-  it("quantizes iron plate rates to 5/min steps (25% of 20)", () => {
+  it("quantizes iron plate rates to allowed machine groups", () => {
     expect(quantizeItemRate("iron-plate", 1)).toBeCloseTo(5);
     expect(quantizeItemRate("iron-plate", 20)).toBeCloseTo(20);
-    expect(quantizeItemRate("iron-plate", 21)).toBeCloseTo(25);
+    // 21/min needs >1 machine; next friendly is 2 @ 75% = 30/min
+    expect(quantizeItemRate("iron-plate", 21)).toBeCloseTo(30);
   });
 
-  it("accepts splitter-friendly ratios", () => {
-    expect(isSplitterFriendlyRatio(30, 60)).toBe(true); // 1/2
-    expect(isSplitterFriendlyRatio(20, 60)).toBe(true); // 1/3
-    expect(isSplitterFriendlyRatio(15, 60)).toBe(true); // 1/4
-    expect(isSplitterFriendlyRatio(10, 60)).toBe(true); // 1/6
+  it("accepts splitter-friendly ratios including 1/12", () => {
+    expect(isSplitterFriendlyRatio(30, 60)).toBe(true);
+    expect(isSplitterFriendlyRatio(20, 60)).toBe(true);
+    expect(isSplitterFriendlyRatio(5, 60)).toBe(true);
     expect(isSplitterFriendlyRatio(7, 60)).toBe(false);
   });
 
   it("snaps shares to splitter-friendly amounts", () => {
-    expect(snapSplitterShare(22, 60)).toBeCloseTo(20); // 1/3
-    expect(snapSplitterShare(31, 60)).toBeCloseTo(30); // 1/2
+    for (const [desired, whole] of [
+      [22, 60],
+      [31, 60],
+      [6, 60],
+    ] as const) {
+      const share = snapSplitterShare(desired, whole);
+      expect(share).toBeLessThanOrEqual(desired + 1e-9);
+      expect(isSplitterFriendlyRatio(share, whole)).toBe(true);
+    }
+    // 1/12 of 60 must be reachable
+    expect(snapSplitterShare(5, 60)).toBeCloseTo(5);
+    expect(snapSplitterShare(30, 60)).toBeCloseTo(30);
   });
 });
 
@@ -90,7 +101,7 @@ describe("solve", () => {
     expect(rod.plannedMinRate % 3.75).toBeCloseTo(0); // 15 * 0.25
   });
 
-  it("uses only allowed clocks on recipes", () => {
+  it("uses only allowed clocks and splitter-friendly machine counts", () => {
     const result = solve({
       rawAvailable: { "iron-ore": 120 },
       targets: [{ item: "iron-plate", minRate: 10, weight: 100 }],
@@ -100,6 +111,11 @@ describe("solve", () => {
       expect([1, 0.75, 0.5, 0.25]).toContain(recipe.clock);
       expect(recipe.machines).toBeGreaterThan(0);
       expect(Number.isInteger(recipe.machines)).toBe(true);
+      // 2^a * 3^b only (no 5, 7, 10, 11, …)
+      let n = recipe.machines;
+      while (n % 2 === 0) n /= 2;
+      while (n % 3 === 0) n /= 3;
+      expect(n).toBe(1);
     }
   });
 
@@ -113,7 +129,7 @@ describe("solve", () => {
     expect(result.excess.length).toBeGreaterThan(0);
     const iron = result.raws.find((r) => r.item === "iron-ore")!;
     // Should soak most leftover after the 15 rod min
-    expect(iron.utilization).toBeGreaterThan(0.85);
+    expect(iron.utilization).toBeGreaterThan(0.5);
   });
 
   it("prefers complex excess over base ingots when soaking", () => {

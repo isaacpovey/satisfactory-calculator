@@ -17,6 +17,7 @@ import {
   itemRateStep,
   quantizeItemRate,
   representMachines,
+  snapExcessBranch,
   snapSplitterShare,
 } from "./constraints";
 import type {
@@ -362,11 +363,50 @@ export function solve(input: PlannerInput): SolveResult {
     let guard = 0;
     while (guard++ < 800) {
       let progressed = false;
+
+      // Downstream demand for each item from current sinks (targets + excess)
+      const currentSinks: { item: ItemId; rate: number }[] = [];
+      for (const [item, rate] of plannedMins) {
+        currentSinks.push({ item, rate: rate + (targetExtra.get(item) ?? 0) });
+      }
+      for (const [item, rate] of excessRates) {
+        if (rate > EPS) currentSinks.push({ item, rate });
+      }
+      const currentExpand = expandSinks(currentSinks);
+      const downstreamByItem = new Map<ItemId, number>();
+      for (const recipe of allRecipes) {
+        const crafts = currentExpand.recipeCrafts.get(recipe.id) ?? 0;
+        if (crafts <= EPS) continue;
+        for (const input of recipe.inputs) {
+          if (itemById[input.item]?.isRaw) continue;
+          downstreamByItem.set(
+            input.item,
+            (downstreamByItem.get(input.item) ?? 0) + input.amount * crafts,
+          );
+        }
+      }
+
       for (const item of fillOrder) {
         const step = itemRateStep(item);
         if (step <= EPS) continue;
         const current = excessRates.get(item) ?? 0;
-        const next = quantizeItemRate(item, current + step);
+        let next = quantizeItemRate(item, current + step);
+        // Excess branch off this item's production must be splitter-friendly
+        // vs downstream consumers (nested 1/2 and 1/3, e.g. 1/12).
+        const downstream = downstreamByItem.get(item) ?? 0;
+        next = snapExcessBranch(next, downstream);
+        next = quantizeItemRate(item, next);
+        // Re-snap after quantize (quantize may break the ratio slightly — walk down)
+        while (next > current + EPS) {
+          const snapped = snapExcessBranch(next, downstream);
+          const q = quantizeItemRate(item, snapped);
+          if (Math.abs(q - next) <= EPS) break;
+          next = Math.max(current, q - step);
+        }
+        next = snapExcessBranch(next, downstream);
+        next = quantizeItemRate(item, next);
+        if (next + EPS < current) next = current;
+
         const delta = next - current;
         if (delta <= EPS) continue;
         if (!rawFits(demandRaws(item, delta), leftover)) continue;
