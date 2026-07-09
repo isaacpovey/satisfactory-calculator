@@ -88,8 +88,8 @@ export function PlannerApp() {
       </div>
 
       <footer className="border-t border-border/70 pt-4 text-xs text-muted-foreground">
-        Client-side only · clocks 100/75/50/25% · machine counts 2ⁿ·3ᵐ ·
-        splitter-friendly excess branches · auto excess fill
+        Client-side only · clocks 100/75/50/25% · machine counts 2ⁿ·3ᵐ (max
+        splitter depth 5) · splitter-friendly excess branches · auto excess fill
       </footer>
     </div>
   );

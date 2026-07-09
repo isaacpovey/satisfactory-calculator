@@ -27,13 +27,15 @@ describe("formatClock", () => {
 });
 
 describe("splitter-friendly machine counts", () => {
-  it("includes 1/12-style counts", () => {
+  it("includes depth≤5 counts and excludes deeper ones", () => {
     expect(SPLITTER_FRIENDLY_COUNTS).toContain(1);
     expect(SPLITTER_FRIENDLY_COUNTS).toContain(2);
     expect(SPLITTER_FRIENDLY_COUNTS).toContain(3);
     expect(SPLITTER_FRIENDLY_COUNTS).toContain(4);
     expect(SPLITTER_FRIENDLY_COUNTS).toContain(6);
-    expect(SPLITTER_FRIENDLY_COUNTS).toContain(12);
+    expect(SPLITTER_FRIENDLY_COUNTS).toContain(12); // 2^2·3^1 depth 3
+    expect(SPLITTER_FRIENDLY_COUNTS).toContain(32); // 2^5 depth 5
+    expect(SPLITTER_FRIENDLY_COUNTS).not.toContain(64); // 2^6 depth 6
     expect(isSplitterFriendlyCount(5)).toBe(false);
     expect(isSplitterFriendlyCount(7)).toBe(false);
     expect(isSplitterFriendlyCount(12)).toBe(true);

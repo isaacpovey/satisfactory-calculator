@@ -7,13 +7,18 @@ export type AllowedClock = (typeof ALLOWED_CLOCKS)[number];
 
 const EPS = 1e-9;
 
+/**
+ * Max nested 1/2 + 1/3 splitter depth (a + b for denominator 2^a·3^b).
+ * Depth 5 keeps manifolds practical (e.g. 1/12 is depth 3; 1/32 is depth 5).
+ */
+export const MAX_SPLITTER_DEPTH = 5;
+
 /** Machine group sizes that can be fed equally with nested 1/2 and 1/3 splitters. */
 export const SPLITTER_FRIENDLY_COUNTS: readonly number[] = (() => {
   const set = new Set<number>();
-  for (let a = 0; a <= 6; a++) {
-    for (let b = 0; b <= 4; b++) {
-      const n = 2 ** a * 3 ** b;
-      if (n <= 64) set.add(n);
+  for (let a = 0; a <= MAX_SPLITTER_DEPTH; a++) {
+    for (let b = 0; b <= MAX_SPLITTER_DEPTH - a; b++) {
+      set.add(2 ** a * 3 ** b);
     }
   }
   return [...set].sort((x, y) => x - y);
