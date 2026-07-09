@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { rawCoefficients } from "@/lib/solver/bom";
 import { solve } from "@/lib/solver/allocate";
 import {
+  isSplitterFriendlyCount,
   isSplitterFriendlyRatio,
   quantizeItemRate,
   representMachines,
@@ -49,8 +50,8 @@ describe("constraints", () => {
   it("quantizes iron plate rates to allowed machine groups", () => {
     expect(quantizeItemRate("iron-plate", 1)).toBeCloseTo(5);
     expect(quantizeItemRate("iron-plate", 20)).toBeCloseTo(20);
-    // 21/min needs >1 machine; 2 @ 66.67% = 26.67/min (closer than 2 @ 75%)
-    expect(quantizeItemRate("iron-plate", 21)).toBeCloseTo((40 * 2) / 3);
+    // 21/min = 1.05 machines → multi-group 1@75% + 1@33.33% = 21.67/min
+    expect(quantizeItemRate("iron-plate", 21)).toBeCloseTo(20 * (0.75 + 1 / 3));
   });
 
   it("accepts splitter-friendly ratios including 1/12", () => {
@@ -281,4 +282,80 @@ describe("solve", () => {
     const allowed = [1, 0.75, 2 / 3, 0.5, 1 / 3, 0.25];
     expect(allowed.some((c) => Math.abs(c - osc.clock) < 1e-9)).toBe(true);
   });
+
+  it("emits a factory network with stages and edges", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 120 },
+      targets: [
+        { item: "iron-plate", minRate: 20, weight: 0 },
+        { item: "iron-rod", minRate: 15, weight: 0 },
+      ],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    expect(result.network.stages.length).toBeGreaterThan(0);
+    expect(result.network.edges.length).toBeGreaterThan(0);
+
+    const ingotStage = result.network.stages.find(
+      (s) => s.recipeId === "iron-ingot",
+    );
+    expect(ingotStage).toBeDefined();
+    const outgoing = result.network.edges.filter(
+      (e) => e.from.kind === "stage" && e.from.id === "iron-ingot",
+    );
+    expect(outgoing.length).toBeGreaterThanOrEqual(2);
+    const toPlate = outgoing.find((e) => e.to.id === "iron-plate");
+    const toRod = outgoing.find((e) => e.to.id === "iron-rod");
+    expect(toPlate).toBeDefined();
+    expect(toRod).toBeDefined();
+  });
+
+  it("marks sole consumer edges as merge-only", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 60 },
+      targets: [{ item: "iron-plate", minRate: 20, weight: 0 }],
+      excess: [],
+    });
+    const oreToIngot = result.network.edges.find(
+      (e) =>
+        e.from.kind === "raw" &&
+        e.from.id === "iron-ore" &&
+        e.to.kind === "recipe" &&
+        e.to.id === "iron-ingot",
+    );
+    // May share ore with excess soak — if sole, mergeOnly
+    if (oreToIngot) {
+      const siblings = result.network.edges.filter(
+        (e) =>
+          e.from.kind === "raw" &&
+          e.from.id === "iron-ore" &&
+          e.item === "iron-ore",
+      );
+      if (siblings.length === 1) {
+        expect(oreToIngot.outputSplit.mergeOnly).toBe(true);
+      }
+    }
+  });
+
+  it("provides input split steps for splitter-friendly group sizes", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 480 },
+      targets: [{ item: "iron-plate", minRate: 120, weight: 0 }],
+      excess: [],
+    });
+    const stage = result.network.stages.find((s) => s.recipeId === "iron-plate");
+    expect(stage).toBeDefined();
+    const friendly = stage!.groups.find((g) => g.machines === 6);
+    if (friendly) {
+      expect(friendly.inputSplit.mergeOnly).toBe(false);
+      expect(friendly.inputSplit.steps.length).toBeGreaterThan(0);
+    } else {
+      // Any friendly multi-machine group should have steps
+      const multi = stage!.groups.find((g) => g.machines > 1);
+      if (multi && isSplitterFriendlyCount(multi.machines)) {
+        expect(multi.inputSplit.steps.length).toBeGreaterThan(0);
+      }
+    }
+  });
 });
+

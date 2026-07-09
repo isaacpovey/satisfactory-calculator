@@ -1,70 +1,105 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { itemById } from "@/data/items";
 import type { ExcessResult } from "@/lib/solver/types";
 import { formatRate } from "@/lib/solver/format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface ExcessPanelProps {
-  /** Solver-computed excess rows for the current chain */
   excess: ExcessResult[];
-  /** User floor overrides (items/min) */
   floors: Partial<Record<string, number>>;
   onFloorChange: (item: string, rate: number) => void;
 }
 
 export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps) {
+  const [showIdle, setShowIdle] = useState(false);
+
+  const { active, idle } = useMemo(() => {
+    const a: ExcessResult[] = [];
+    const i: ExcessResult[] = [];
+    for (const row of excess) {
+      const floor = floors[row.item] ?? 0;
+      if (row.rate > 1e-6 || floor > 1e-6) a.push(row);
+      else i.push(row);
+    }
+    return { active: a, idle: i };
+  }, [excess, floors]);
+
+  const visible = showIdle ? [...active, ...idle] : active;
+
   return (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle>Excess intermediaries</CardTitle>
-        <CardDescription>
-          Auto-filled from the production chain. Set a floor to keep spare
-          parts; the planner may raise rates further to soak leftover ore
-          (preferring more complex parts).
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 pt-4">
+    <section className="flex flex-col gap-3 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-heading text-base font-semibold">
+            Excess floors
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Optional spare-part minimums
+          </p>
+        </div>
+        {idle.length > 0 ? (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-medium text-primary hover:underline"
+            onClick={() => setShowIdle((v) => !v)}
+          >
+            {showIdle ? "Hide idle" : `+${idle.length} idle`}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-2">
         {excess.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Add an end product to see chain intermediaries.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No active spare parts yet.
+          </p>
         ) : (
-          excess.map((row) => {
+          visible.map((row) => {
             const floor = floors[row.item] ?? 0;
+            const isActive = row.rate > 1e-6;
             return (
               <div
                 key={row.item}
-                className="grid gap-2 rounded-lg border border-border/80 bg-muted/30 p-3 sm:grid-cols-[1fr_7rem_auto] sm:items-end"
+                className={cn(
+                  "grid gap-2 rounded-lg p-3 sm:grid-cols-[1fr_5.5rem] sm:items-end",
+                  isActive ? "bg-accent/60" : "bg-muted/40",
+                )}
               >
-                <div>
-                  <p className="text-sm font-medium">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
                     {itemById[row.item]?.name ?? row.item}
                   </p>
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    Planned {formatRate(row.rate)}/min
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {isActive
+                      ? `${formatRate(row.rate)}/min`
+                      : "idle"}
                     {row.autoRate > 1e-6
-                      ? ` · auto +${formatRate(row.autoRate)}`
+                      ? ` · +${formatRate(row.autoRate)} auto`
                       : ""}
                   </p>
                 </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor={`excess-floor-${row.item}`}>Floor</Label>
+                <div className="grid gap-1">
+                  <Label
+                    htmlFor={`excess-floor-${row.item}`}
+                    className="text-xs"
+                  >
+                    Floor
+                  </Label>
                   <Input
                     id={`excess-floor-${row.item}`}
                     type="number"
                     min={0}
                     step="any"
                     inputMode="decimal"
+                    className="h-8 tabular-nums"
                     value={floor}
                     onChange={(e) => {
                       const n = Number(e.target.value);
@@ -75,18 +110,11 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
                     }}
                   />
                 </div>
-                <div className="flex sm:justify-end sm:pb-1">
-                  {row.rate > 1e-6 ? (
-                    <Badge variant="secondary">Active</Badge>
-                  ) : (
-                    <Badge variant="outline">Idle</Badge>
-                  )}
-                </div>
               </div>
             );
           })
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

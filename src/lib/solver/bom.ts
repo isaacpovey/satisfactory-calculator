@@ -6,7 +6,10 @@ import {
   recipes as allRecipes,
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
-import { representMachinesAny } from "./constraints";
+import {
+  representMachinesMulti,
+  totalEffectiveMachines,
+} from "./constraints";
 
 const EPS = 1e-9;
 
@@ -62,9 +65,11 @@ export function expandDemandToMaps(
 
   const outputPerMinutePerMachine = recipePrimaryOutputPerMinute(recipe);
   const exactMachines = rate / outputPerMinutePerMachine;
-  const config = representMachinesAny(exactMachines);
+  const groups = representMachinesMulti(exactMachines, {
+    anyMachineCount: true,
+  });
   const craftsPerMinute =
-    config.effectiveMachines * recipeCyclesPerMinute(recipe);
+    totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
 
   recipeCraftsPerMin.set(
     recipe.id,
@@ -145,10 +150,12 @@ export function expandFactoryPlan(
       const recipe = getRecipeForProduct(itemId);
       if (!recipe) continue;
       const base = recipePrimaryOutputPerMinute(recipe);
-      const config = representMachinesAny(rate / base);
+      const groups = representMachinesMulti(rate / base, {
+        anyMachineCount: true,
+      });
       craftsByItem.set(
         itemId,
-        config.effectiveMachines * recipeCyclesPerMinute(recipe),
+        totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe),
       );
     }
 
@@ -186,9 +193,11 @@ export function expandFactoryPlan(
     const recipe = getRecipeForProduct(itemId);
     if (!recipe) continue;
     const base = recipePrimaryOutputPerMinute(recipe);
-    const config = representMachinesAny(rate / base);
+    const groups = representMachinesMulti(rate / base, {
+      anyMachineCount: true,
+    });
     const crafts =
-      config.effectiveMachines * recipeCyclesPerMinute(recipe);
+      totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
     recipeCrafts.set(
       recipe.id,
       (recipeCrafts.get(recipe.id) ?? 0) + crafts,

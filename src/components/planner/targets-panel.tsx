@@ -15,13 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 interface TargetsPanelProps {
   targets: TargetSpec[];
@@ -47,14 +40,15 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle>End products</CardTitle>
-        <CardDescription>
-          Set minimum rates, then balance leftover capacity with the sliders.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5 pt-4">
+    <section className="flex flex-col gap-3 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
+      <div>
+        <h2 className="font-heading text-base font-semibold">End products</h2>
+        <p className="text-sm text-muted-foreground">
+          Minimums, then leftover balance weight
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
         {targets.length === 0 && (
           <p className="text-sm text-muted-foreground">
             Add at least one end product to plan.
@@ -63,9 +57,9 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
         {targets.map((target, index) => (
           <div
             key={target.item}
-            className="grid gap-3 rounded-lg border border-border/80 bg-muted/30 p-3"
+            className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-medium">{itemById[target.item].name}</p>
                 <p className="text-xs text-muted-foreground">
@@ -76,19 +70,21 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
+                className="h-7 px-2 text-muted-foreground"
                 onClick={() => remove(index)}
               >
                 Remove
               </Button>
             </div>
-            <div className="grid gap-1.5 sm:max-w-xs">
-              <Label htmlFor={`min-${target.item}`}>Min rate (items/min)</Label>
+            <div className="grid gap-1.5">
+              <Label htmlFor={`min-${target.item}`}>Min rate /min</Label>
               <Input
                 id={`min-${target.item}`}
                 type="number"
                 min={0}
                 step="any"
                 inputMode="decimal"
+                className="tabular-nums"
                 value={target.minRate}
                 onChange={(e) => {
                   const n = Number(e.target.value);
@@ -100,9 +96,9 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
             </div>
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
-                <Label>Leftover balance</Label>
+                <Label>Leftover weight</Label>
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  weight {target.weight}
+                  {target.weight}
                 </span>
               </div>
               <Slider
@@ -121,7 +117,7 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
           </div>
         ))}
 
-        <div className="grid gap-1.5 sm:max-w-sm">
+        <div className="grid gap-1.5">
           <Label>Add product</Label>
           <Select
             key={addKey}
@@ -142,7 +138,7 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
             </SelectContent>
           </Select>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

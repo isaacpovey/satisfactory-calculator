@@ -16,8 +16,9 @@ import {
   ALLOWED_CLOCKS,
   complexityScore,
   quantizeItemRate,
-  representMachinesAny,
+  representMachinesMulti,
 } from "./constraints";
+import { buildFactoryNetwork } from "./network";
 import type {
   ExcessResult,
   ItemFlow,
@@ -128,10 +129,24 @@ function collectGrowthRates(
   );
 
   const rates = new Set<number>();
+  // Multi-group achievable rates: enumerate effective machines via groups
+  const maxEffective = tryMax / base;
   for (let machines = 1; machines <= maxMachines; machines++) {
     for (const clock of ALLOWED_CLOCKS) {
       const rate = machines * clock * base;
       if (rate > current + EPS && rate <= tryMax + EPS) rates.add(rate);
+    }
+  }
+  // Also include multi-group combinations (k @ 100% + remainder)
+  const fullMax = Math.min(maxMachines, Math.ceil(maxEffective + EPS));
+  for (let k = 0; k <= fullMax; k++) {
+    for (const clock of ALLOWED_CLOCKS) {
+      for (let remMachines = 0; remMachines <= 8; remMachines++) {
+        if (k === 0 && remMachines === 0) continue;
+        const effective = k + remMachines * clock;
+        const rate = effective * base;
+        if (rate > current + EPS && rate <= tryMax + EPS) rates.add(rate);
+      }
     }
   }
   return [...rates].sort((a, b) => a - b);
@@ -215,21 +230,31 @@ function buildRecipeUsages(recipeCrafts: Map<string, number>): RecipeUsage[] {
     const crafts = recipeCrafts.get(recipe.id) ?? 0;
     if (crafts <= EPS) continue;
     const exactMachines = crafts / recipeCyclesPerMinute(recipe);
-    const config = representMachinesAny(exactMachines);
+    const groups = representMachinesMulti(exactMachines, {
+      anyMachineCount: true,
+    });
     const primary = recipe.outputs[0]!;
-    usages.push({
-      recipeId: recipe.id,
-      recipeName: recipe.name,
-      building: buildingName[recipe.building] ?? recipe.building,
-      machines: config.machines,
-      clock: config.clock,
-      effectiveMachines: config.effectiveMachines,
-      cyclesPerMinute: crafts,
-      outputPerMinute: primary.amount * crafts,
-      primaryOutput: primary.item,
+    const cyclesPerMachine = recipeCyclesPerMinute(recipe);
+    groups.forEach((config, groupIndex) => {
+      const groupCrafts = config.effectiveMachines * cyclesPerMachine;
+      usages.push({
+        recipeId: recipe.id,
+        recipeName: recipe.name,
+        building: buildingName[recipe.building] ?? recipe.building,
+        machines: config.machines,
+        clock: config.clock,
+        effectiveMachines: config.effectiveMachines,
+        cyclesPerMinute: groupCrafts,
+        outputPerMinute: primary.amount * groupCrafts,
+        primaryOutput: primary.item,
+        groupIndex,
+      });
     });
   }
-  usages.sort((a, b) => a.recipeName.localeCompare(b.recipeName));
+  usages.sort(
+    (a, b) =>
+      a.recipeName.localeCompare(b.recipeName) || a.groupIndex - b.groupIndex,
+  );
   return usages;
 }
 
@@ -492,6 +517,15 @@ export function solve(input: PlannerInput): SolveResult {
   for (const t of targetResults) addRate(endRates, t.item, t.totalRate);
   for (const e of excessResults) addRate(endRates, e.item, e.rate);
 
+  const targetRateMap = new Map<ItemId, number>();
+  for (const t of targetResults) {
+    if (t.totalRate > EPS) targetRateMap.set(t.item, t.totalRate);
+  }
+  const excessRateMap = new Map<ItemId, number>();
+  for (const e of excessResults) {
+    if (e.rate > EPS) excessRateMap.set(e.item, e.rate);
+  }
+
   return {
     feasible,
     targets: targetResults,
@@ -499,6 +533,11 @@ export function solve(input: PlannerInput): SolveResult {
     raws: finalRaws,
     recipes: buildRecipeUsages(final.recipeCrafts),
     items: buildItemFlows(final.recipeCrafts, endRates),
+    network: buildFactoryNetwork(
+      final.recipeCrafts,
+      targetRateMap,
+      excessRateMap,
+    ),
     overallUtilization: overallUtil(finalRaws),
   };
 }

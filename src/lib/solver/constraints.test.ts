@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   ceilEffectiveMachines,
   formatClock,
+  friendlyRatio,
   isSplitterFriendlyCount,
   isSplitterFriendlyRatio,
   nextExcessAbove,
   quantizeItemRate,
   representMachines,
+  representMachinesMulti,
   snapExcessBranch,
   snapSplitterShare,
+  splitStepsForCount,
+  splitStepsForRatio,
   SPLITTER_FRIENDLY_COUNTS,
+  totalEffectiveMachines,
 } from "./constraints";
 
 describe("ceilEffectiveMachines", () => {
@@ -63,6 +68,46 @@ describe("splitter-friendly machine counts", () => {
       expect(isSplitterFriendlyCount(c.machines)).toBe(true);
       expect(c.effectiveMachines).toBeGreaterThanOrEqual(exact - 1e-9);
     }
+  });
+});
+
+describe("representMachinesMulti", () => {
+  it("splits 5.25 into 5@100% + 1@25% when any count allowed", () => {
+    const groups = representMachinesMulti(5.25, { anyMachineCount: true });
+    expect(totalEffectiveMachines(groups)).toBeCloseTo(5.25);
+    expect(groups.reduce((s, g) => s + g.machines, 0)).toBe(6);
+    expect(groups.some((g) => g.machines === 5 && g.clock === 1)).toBe(true);
+    expect(groups.some((g) => g.machines === 1 && g.clock === 0.25)).toBe(true);
+  });
+
+  it("beats a single 6@100% group on overshoot", () => {
+    const multi = representMachinesMulti(5.25, { anyMachineCount: true });
+    const single = representMachines(5.25);
+    expect(totalEffectiveMachines(multi)).toBeLessThan(
+      single.effectiveMachines - 1e-9,
+    );
+  });
+
+  it("keeps a single group when that is best", () => {
+    const groups = representMachinesMulti(2);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.machines).toBe(2);
+    expect(groups[0]!.clock).toBe(1);
+  });
+});
+
+describe("split step helpers", () => {
+  it("factors equal-feed counts into 1/2 and 1/3 steps", () => {
+    expect(splitStepsForCount(1)).toEqual([]);
+    expect(splitStepsForCount(2)).toEqual(["1/2"]);
+    expect(splitStepsForCount(6)).toEqual(["1/2", "1/3"]);
+    expect(splitStepsForCount(5)).toEqual([]);
+  });
+
+  it("factors ratios into nested splitter steps", () => {
+    expect(splitStepsForRatio(1, 2)).toEqual(["1/2"]);
+    expect(splitStepsForRatio(1, 6)).toEqual(["1/2", "1/3"]);
+    expect(friendlyRatio(30, 60)).toEqual({ num: 1, den: 2 });
   });
 });
 
