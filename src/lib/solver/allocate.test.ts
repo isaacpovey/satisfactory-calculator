@@ -132,6 +132,90 @@ describe("solve", () => {
     expect(iron.utilization).toBeGreaterThan(0.5);
   });
 
+  it("grows limestone-only targets when coal is already full", () => {
+    // Coal enough for steel mins after quantization; limestone leftover for Concrete.
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 400,
+        "copper-ore": 100,
+        limestone: 300,
+        coal: 120,
+      },
+      targets: [
+        { item: "steel-beam", minRate: 10, weight: 50 },
+        { item: "concrete", minRate: 5, weight: 50 },
+      ],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    const concrete = result.targets.find((t) => t.item === "concrete")!;
+    expect(concrete.extraRate).toBeGreaterThan(0);
+    const limestone = result.raws.find((r) => r.item === "limestone")!;
+    expect(limestone.utilization).toBeGreaterThan(0.5);
+  });
+
+  it("soaks leftover iron when coal is full via non-steel parts", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 500,
+        limestone: 200,
+        coal: 120,
+      },
+      targets: [
+        { item: "steel-pipe", minRate: 10, weight: 50 },
+        { item: "concrete", minRate: 5, weight: 50 },
+        { item: "iron-plate", minRate: 10, weight: 50 },
+      ],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    const iron = result.raws.find((r) => r.item === "iron-ore")!;
+    const limestone = result.raws.find((r) => r.item === "limestone")!;
+    expect(iron.utilization).toBeGreaterThan(0.85);
+    expect(limestone.utilization).toBeGreaterThan(0.85);
+  });
+
+  it("user factory: limestone grows when coal is exhausted", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 1860,
+        "copper-ore": 540,
+        limestone: 420,
+        coal: 360,
+        "caterium-ore": 120,
+        "raw-quartz": 0,
+        sulfur: 0,
+      },
+      targets: [
+        { item: "versatile-framework", minRate: 5, weight: 50 },
+        { item: "automated-wiring", minRate: 5, weight: 50 },
+        { item: "smart-plating", minRate: 5, weight: 50 },
+        { item: "encased-industrial-beam", minRate: 5, weight: 50 },
+        { item: "ai-limiter", minRate: 5, weight: 50 },
+        { item: "concrete", minRate: 5, weight: 50 },
+        { item: "reinforced-iron-plate", minRate: 5, weight: 50 },
+        { item: "modular-frame", minRate: 5, weight: 50 },
+        { item: "steel-pipe", minRate: 5, weight: 50 },
+        { item: "motor", minRate: 5, weight: 50 },
+      ],
+      excess: [
+        { item: "stator", rate: 5 },
+        { item: "copper-sheet", rate: 5 },
+        { item: "iron-plate", rate: 5 },
+        { item: "iron-rod", rate: 5 },
+        { item: "quickwire", rate: 5 },
+        { item: "steel-beam", rate: 5 },
+      ],
+    });
+    expect(result.feasible).toBe(true);
+    const limestone = result.raws.find((r) => r.item === "limestone")!;
+    const concrete = result.targets.find((t) => t.item === "concrete")!;
+    const eib = result.targets.find((t) => t.item === "encased-industrial-beam")!;
+    expect(concrete.extraRate + eib.extraRate).toBeGreaterThan(0);
+    expect(limestone.utilization).toBeGreaterThan(0.7);
+    expect(result.overallUtilization).toBeGreaterThan(0.92);
+  });
+
   it("prefers complex excess over base ingots when soaking", () => {
     const result = solve({
       rawAvailable: {

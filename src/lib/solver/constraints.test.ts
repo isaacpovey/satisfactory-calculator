@@ -4,6 +4,7 @@ import {
   formatClock,
   isSplitterFriendlyCount,
   isSplitterFriendlyRatio,
+  nextExcessAbove,
   quantizeItemRate,
   representMachines,
   snapExcessBranch,
@@ -93,5 +94,12 @@ describe("quantize and splitters", () => {
     expect(e16).toBeLessThanOrEqual(16 + 1e-9);
     expect(e16).toBeGreaterThanOrEqual(15);
     expect(isSplitterFriendlyRatio(e16, 30 + e16)).toBe(true);
+  });
+
+  it("finds the next legal excess branch above current", () => {
+    // downstream 30: legal excesses include 10 (1/4), 15 (1/3), 30 (1/2), …
+    expect(nextExcessAbove(0, 100, 30)).toBeCloseTo(10);
+    expect(nextExcessAbove(10, 100, 30)).toBeCloseTo(15);
+    expect(nextExcessAbove(15, 100, 30)).toBeCloseTo(30);
   });
 });

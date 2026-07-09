@@ -15,6 +15,7 @@ import {
 import {
   complexityScore,
   itemRateStep,
+  nextExcessAbove,
   quantizeItemRate,
   representMachines,
   snapExcessBranch,
@@ -278,68 +279,50 @@ export function solve(input: PlannerInput): SolveResult {
     excessRates.set(item, quantizeItemRate(item, rate));
   }
 
-  // Phase B — weighted leftover to targets (splitter-friendly)
+  // Phase B — leftover to targets independently by weight priority.
+  // Each product only competes for the raws it actually uses, so limestone
+  // can still feed Concrete when coal is already at 100%.
   if (feasible) {
-    const weighted = targets.filter((t) => t.weight > EPS);
-    const weightSum = weighted.reduce((a, t) => a + t.weight, 0);
-    if (weightSum > EPS) {
-      const coeffs = weighted.map((t) => exactRawCoefficients(t.item));
-      const norms = weighted.map((t) => t.weight / weightSum);
-      let tScale = Number.POSITIVE_INFINITY;
-      for (const rawId of scarceRawIds) {
-        const avail = leftover.get(rawId) ?? 0;
-        let demandPerT = 0;
-        for (let i = 0; i < weighted.length; i++) {
-          demandPerT += norms[i]! * (coeffs[i]?.[rawId] ?? 0);
+    const weighted = targets
+      .filter((t) => t.weight > EPS)
+      .sort((a, b) => b.weight - a.weight || a.item.localeCompare(b.item));
+
+    if (weighted.length > 0) {
+      let guard = 0;
+      while (guard++ < 500) {
+        let progressed = false;
+        for (const t of weighted) {
+          const current = targetExtra.get(t.item) ?? 0;
+          const affordable = maxAffordableQuantized(t.item, leftover);
+          if (affordable <= current + EPS) continue;
+
+          let candidate = quantizeItemRate(t.item, affordable);
+          if (candidate <= current + EPS) continue;
+
+          while (candidate > current + EPS) {
+            const delta = candidate - current;
+            if (rawFits(demandRaws(t.item, delta), leftover)) break;
+            candidate = Math.max(current, candidate - itemRateStep(t.item));
+            candidate = quantizeItemRate(t.item, candidate);
+          }
+          if (candidate <= current + EPS) continue;
+
+          const delta = candidate - current;
+          targetExtra.set(t.item, candidate);
+          leftover = subtractRaws(leftover, demandRaws(t.item, delta));
+          progressed = true;
         }
-        if (demandPerT > EPS) tScale = Math.min(tScale, avail / demandPerT);
-      }
-      if (!Number.isFinite(tScale) || tScale < 0) tScale = 0;
-
-      const ideals = weighted.map((_, i) => norms[i]! * tScale);
-      const idealTotal = ideals.reduce((a, b) => a + b, 0);
-
-      const order = weighted
-        .map((t, i) => ({ t, ideal: ideals[i]! }))
-        .sort((a, b) => b.t.weight - a.t.weight || b.ideal - a.ideal);
-
-      let assignedSum = 0;
-      for (const { t, ideal } of order) {
-        const remaining = Math.max(0, idealTotal - assignedSum);
-        let candidate = Math.min(ideal, remaining);
-        candidate = Math.min(candidate, maxAffordableQuantized(t.item, leftover));
-        if (idealTotal > EPS) {
-          candidate = snapSplitterShare(candidate, idealTotal);
-        }
-        candidate = quantizeItemRate(t.item, candidate);
-
-        while (candidate > EPS) {
-          if (rawFits(demandRaws(t.item, candidate), leftover)) break;
-          candidate = Math.max(0, candidate - itemRateStep(t.item));
-        }
-        candidate = quantizeItemRate(t.item, candidate);
-
-        if (candidate > EPS) {
-          targetExtra.set(t.item, (targetExtra.get(t.item) ?? 0) + candidate);
-          assignedSum += candidate;
-          leftover = subtractRaws(leftover, demandRaws(t.item, candidate));
-        }
+        if (!progressed) break;
       }
     }
   }
 
   // Phase C — complexity-first auto excess to soak leftover raws.
-  // Prefer chain intermediates; also allow any manufactured part that can
-  // consume leftover raw types so utilization can approach 100%.
   const chainRoots = [
     ...targets.map((t) => t.item),
     ...userExcess.keys(),
   ];
   const intermediates = collectChainIntermediates(chainRoots);
-
-  const leftoverRawTypes = new Set(
-    scarceRawIds.filter((id) => (leftover.get(id) ?? 0) > EPS),
-  );
 
   const soakCandidates = new Set<ItemId>(intermediates);
   for (const id of manufacturedItemIds) {
@@ -347,11 +330,10 @@ export function solve(input: PlannerInput): SolveResult {
     const coeffs = exactRawCoefficients(id);
     const uses = Object.keys(coeffs) as ItemId[];
     if (uses.length === 0) continue;
-    if (uses.every((r) => leftoverRawTypes.has(r) || (leftover.get(r) ?? 0) >= 0)) {
-      // Only include if it consumes at least one leftover raw we still have
-      if (uses.some((r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS)) {
-        soakCandidates.add(id);
-      }
+    if (
+      uses.some((r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS)
+    ) {
+      soakCandidates.add(id);
     }
   }
 
@@ -364,7 +346,6 @@ export function solve(input: PlannerInput): SolveResult {
     while (guard++ < 800) {
       let progressed = false;
 
-      // Downstream demand for each item from current sinks (targets + excess)
       const currentSinks: { item: ItemId; rate: number }[] = [];
       for (const [item, rate] of plannedMins) {
         currentSinks.push({ item, rate: rate + (targetExtra.get(item) ?? 0) });
@@ -387,31 +368,45 @@ export function solve(input: PlannerInput): SolveResult {
       }
 
       for (const item of fillOrder) {
-        const step = itemRateStep(item);
-        if (step <= EPS) continue;
         const current = excessRates.get(item) ?? 0;
-        let next = quantizeItemRate(item, current + step);
-        // Excess branch off this item's production must be splitter-friendly
-        // vs downstream consumers (nested 1/2 and 1/3, e.g. 1/12).
-        const downstream = downstreamByItem.get(item) ?? 0;
-        next = snapExcessBranch(next, downstream);
-        next = quantizeItemRate(item, next);
-        // Re-snap after quantize (quantize may break the ratio slightly — walk down)
-        while (next > current + EPS) {
-          const snapped = snapExcessBranch(next, downstream);
-          const q = quantizeItemRate(item, snapped);
-          if (Math.abs(q - next) <= EPS) break;
-          next = Math.max(current, q - step);
-        }
-        next = snapExcessBranch(next, downstream);
-        next = quantizeItemRate(item, next);
-        if (next + EPS < current) next = current;
+        const affordable = maxAffordableQuantized(item, leftover);
+        if (affordable <= current + EPS) continue;
 
-        const delta = next - current;
-        if (delta <= EPS) continue;
-        if (!rawFits(demandRaws(item, delta), leftover)) continue;
+        const downstream = downstreamByItem.get(item) ?? 0;
+        // Largest legal splitter-friendly excess ≤ leftover capacity
+        let next = snapExcessBranch(affordable, downstream);
+        next = quantizeItemRate(item, next);
+        if (downstream > EPS) {
+          next = snapExcessBranch(next, downstream);
+          next = quantizeItemRate(item, next);
+        }
+        if (next <= current + EPS) {
+          next = nextExcessAbove(current, affordable, downstream);
+          next = quantizeItemRate(item, next);
+        }
+        if (next <= current + EPS) continue;
+
+        if (!rawFits(demandRaws(item, next - current), leftover)) {
+          let probe = snapExcessBranch(next - EPS, downstream);
+          probe = quantizeItemRate(item, probe);
+          let found = false;
+          for (let i = 0; i < 40; i++) {
+            if (probe <= current + EPS) break;
+            if (rawFits(demandRaws(item, probe - current), leftover)) {
+              next = probe;
+              found = true;
+              break;
+            }
+            probe = snapExcessBranch(probe - EPS, downstream);
+            probe = quantizeItemRate(item, probe);
+          }
+          if (!found) continue;
+        }
+
+        const applied = next - current;
+        if (applied <= EPS) continue;
         excessRates.set(item, next);
-        leftover = subtractRaws(leftover, demandRaws(item, delta));
+        leftover = subtractRaws(leftover, demandRaws(item, applied));
         progressed = true;
         break;
       }

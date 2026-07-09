@@ -189,6 +189,47 @@ export function snapExcessBranch(
 }
 
 /**
+ * Next legal excess branch strictly above `current`, up to `desiredMax`.
+ * Prefers practical manifolds (reduced den ≤ 4: 1/2, 1/3, 1/4, 2/3, 3/4)
+ * so soak steps are useful — e.g. 1/4 before 1/12.
+ */
+export function nextExcessAbove(
+  current: number,
+  desiredMax: number,
+  downstreamDemand: number,
+): number {
+  if (desiredMax <= current + EPS) return current;
+  const downstream = Math.max(0, downstreamDemand);
+
+  if (downstream <= EPS) {
+    return desiredMax;
+  }
+
+  const findBest = (maxDen: number): number => {
+    let best = Number.POSITIVE_INFINITY;
+    for (const den of SPLITTER_FRIENDLY_COUNTS) {
+      if (den > maxDen) continue;
+      for (let num = 1; num < den; num++) {
+        const excess = (num * downstream) / (den - num);
+        if (
+          excess > current + EPS &&
+          excess <= desiredMax + EPS &&
+          excess < best
+        ) {
+          best = excess;
+        }
+      }
+    }
+    return best;
+  };
+
+  // Practical first (den ≤ 4), then fall back to any splitter-friendly den.
+  let best = findBest(4);
+  if (!Number.isFinite(best)) best = findBest(Number.POSITIVE_INFINITY);
+  return Number.isFinite(best) ? best : current;
+}
+
+/**
  * Given a parent belt rate, return the largest child rate ≤ desired that can
  * be split with nested 1/2 and 1/3 splitters.
  */
