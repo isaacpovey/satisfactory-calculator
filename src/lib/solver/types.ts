@@ -10,7 +10,10 @@ export interface TargetSpec {
 
 export interface ExcessSpec {
   item: ItemId;
-  /** Spare intermediary items/min to reserve */
+  /**
+   * User floor for spare intermediary items/min.
+   * Solver may raise this further to soak leftover raws.
+   */
   rate: number;
 }
 
@@ -34,10 +37,12 @@ export interface RecipeUsage {
   recipeId: string;
   recipeName: string;
   building: string;
-  /** Machines needed (exact fractional) */
+  /** Physical buildings */
   machines: number;
-  /** Ceil of machines */
-  machinesCeil: number;
+  /** Uniform clock (0–1), always an allowed underclock */
+  clock: number;
+  /** machines * clock */
+  effectiveMachines: number;
   /** Recipe crafts per minute across all machines */
   cyclesPerMinute: number;
   /** Primary output items/min */
@@ -58,14 +63,28 @@ export interface ItemFlow {
 export interface TargetResult {
   item: ItemId;
   minRate: number;
+  /** Quantized minimum actually planned */
+  plannedMinRate: number;
   extraRate: number;
   totalRate: number;
   weight: number;
 }
 
+export interface ExcessResult {
+  item: ItemId;
+  /** User-requested floor */
+  requestedRate: number;
+  /** Final spare rate after auto-fill */
+  rate: number;
+  /** How much the solver added beyond the floor */
+  autoRate: number;
+}
+
 export interface SolveResult {
   feasible: boolean;
   targets: TargetResult[];
+  /** All chain intermediaries with planned excess (auto + user) */
+  excess: ExcessResult[];
   raws: RawUtilization[];
   recipes: RecipeUsage[];
   items: ItemFlow[];

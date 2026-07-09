@@ -2,11 +2,13 @@
 
 import { itemById } from "@/data/items";
 import type { SolveResult } from "@/lib/solver/types";
+import { formatClock } from "@/lib/solver/constraints";
 import {
   formatMachines,
   formatPercent,
   formatRate,
 } from "@/lib/solver/format";
+import type { AllowedClock } from "@/lib/solver/constraints";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -60,7 +62,8 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
             <div>
               <CardTitle>Utilization</CardTitle>
               <CardDescription>
-                Scarce raw usage after minima and leftover balance.
+                Scarce raw usage after minima, balance sliders, and auto excess
+                fill (whole machines / easy underclocks).
               </CardDescription>
             </div>
             <Badge variant={result.feasible ? "secondary" : "destructive"}>
@@ -119,7 +122,8 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Min</TableHead>
+                  <TableHead className="text-right">Requested</TableHead>
+                  <TableHead className="text-right">Planned min</TableHead>
                   <TableHead className="text-right">Extra</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
@@ -132,6 +136,9 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatRate(t.minRate)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatRate(t.plannedMinRate)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatRate(t.extraRate)}
@@ -151,7 +158,7 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
         <CardHeader className="border-b">
           <CardTitle>Machines</CardTitle>
           <CardDescription>
-            Recipe throughputs at 100% clock. Build the ceil count.
+            Whole buildings at 100% / 75% / 50% / 25% clock only.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
@@ -165,8 +172,8 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
                 <TableRow>
                   <TableHead>Recipe</TableHead>
                   <TableHead>Building</TableHead>
-                  <TableHead className="text-right">Machines</TableHead>
-                  <TableHead className="text-right">Build</TableHead>
+                  <TableHead className="text-right">Count</TableHead>
+                  <TableHead className="text-right">Clock</TableHead>
                   <TableHead className="text-right">Output/min</TableHead>
                 </TableRow>
               </TableHeader>
@@ -179,7 +186,7 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
                       {formatMachines(r.machines)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.machinesCeil}
+                      {formatClock(r.clock as AllowedClock)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatRate(r.outputPerMinute)}

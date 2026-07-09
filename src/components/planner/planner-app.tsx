@@ -29,11 +29,21 @@ export function PlannerApp() {
   const [rawAvailable, setRawAvailable] =
     useState<Partial<Record<ItemId, number>>>(defaultRaws);
   const [targets, setTargets] = useState<TargetSpec[]>(defaultTargets);
-  const [excess, setExcess] = useState<ExcessSpec[]>([]);
+  const [excessFloors, setExcessFloors] = useState<
+    Partial<Record<ItemId, number>>
+  >({});
+
+  const excessInput: ExcessSpec[] = useMemo(
+    () =>
+      Object.entries(excessFloors)
+        .filter(([, rate]) => (rate ?? 0) > 0)
+        .map(([item, rate]) => ({ item: item as ItemId, rate: rate ?? 0 })),
+    [excessFloors],
+  );
 
   const result = useMemo(
-    () => solve({ rawAvailable, targets, excess }),
-    [rawAvailable, targets, excess],
+    () => solve({ rawAvailable, targets, excess: excessInput }),
+    [rawAvailable, targets, excessInput],
   );
 
   return (
@@ -46,9 +56,9 @@ export function PlannerApp() {
           Resource-Max Planner
         </h1>
         <p className="max-w-2xl text-muted-foreground text-pretty">
-          Enter your ore rates and minimum end-product targets. Leftover
-          capacity is split by the balance sliders so every stage stays
-          recipe-efficient.
+          Enter ore rates and minimum end products. Leftover capacity is split
+          by balance sliders, then soaked into chain intermediaries (complex
+          parts first) using whole machines and easy underclocks.
         </p>
       </header>
 
@@ -63,14 +73,23 @@ export function PlannerApp() {
             }
           />
           <TargetsPanel targets={targets} onChange={setTargets} />
-          <ExcessPanel excess={excess} onChange={setExcess} />
+          <ExcessPanel
+            excess={result.excess}
+            floors={excessFloors}
+            onFloorChange={(item, rate) =>
+              setExcessFloors((prev) => ({
+                ...prev,
+                [item as ItemId]: rate,
+              }))
+            }
+          />
         </div>
         <ResultsPanel result={result} />
       </div>
 
       <footer className="border-t border-border/70 pt-4 text-xs text-muted-foreground">
-        Client-side only · static export ready · no alternate recipes or layout
-        planning in v1
+        Client-side only · clocks 100/75/50/25% · splitter-friendly leftover
+        shares · auto excess fill
       </footer>
     </div>
   );

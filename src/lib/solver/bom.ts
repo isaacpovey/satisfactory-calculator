@@ -16,8 +16,8 @@ export function addRate(map: RateMap, item: ItemId, amount: number): void {
 }
 
 /**
- * Expand demand for `itemId` at `rate` items/min into recipe crafts/min
- * and scarce raw consumption. Unlimited raws are ignored as constraints.
+ * Expand demand for `itemId` at `rate` items/min into exact recipe crafts/min
+ * and scarce raw consumption (no mid-tree machine rounding).
  */
 export function expandDemandToMaps(
   itemId: ItemId,
@@ -77,8 +77,8 @@ export function expandDemandToMaps(
   stack.delete(itemId);
 }
 
-/** Scarce raw items/min required to produce 1 item/min of `itemId`. */
-export function rawCoefficients(
+/** Exact scarce raw items/min required to produce 1 item/min of `itemId`. */
+export function exactRawCoefficients(
   itemId: ItemId,
 ): Partial<Record<ItemId, number>> {
   const raws: RateMap = new Map();
@@ -90,6 +90,13 @@ export function rawCoefficients(
     if (v > EPS) result[id] = v;
   }
   return result;
+}
+
+/** Alias used by tests / public API. */
+export function rawCoefficients(
+  itemId: ItemId,
+): Partial<Record<ItemId, number>> {
+  return exactRawCoefficients(itemId);
 }
 
 export function mergeRateMaps(...maps: RateMap[]): RateMap {

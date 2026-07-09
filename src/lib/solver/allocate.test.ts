@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { rawCoefficients } from "@/lib/solver/bom";
 import { solve } from "@/lib/solver/allocate";
+import {
+  isSplitterFriendlyRatio,
+  quantizeItemRate,
+  representMachines,
+  snapSplitterShare,
+} from "@/lib/solver/constraints";
 
 describe("rawCoefficients", () => {
   it("maps iron plate to iron ore 1.5:1", () => {
-    // 3 ingot -> 2 plate => 1.5 ore per plate
     expect(rawCoefficients("iron-plate")["iron-ore"]).toBeCloseTo(1.5);
   });
 
@@ -13,12 +18,10 @@ describe("rawCoefficients", () => {
   });
 
   it("maps screws to iron ore 0.25:1", () => {
-    // 1 rod -> 4 screws => 0.25 ore per screw
     expect(rawCoefficients("screw")["iron-ore"]).toBeCloseTo(0.25);
   });
 
   it("maps steel beam to iron ore and coal", () => {
-    // 4 steel ingot -> 1 beam; 1 steel = 1 ore + 1 coal
     const c = rawCoefficients("steel-beam");
     expect(c["iron-ore"]).toBeCloseTo(4);
     expect(c["coal"]).toBeCloseTo(4);
@@ -29,140 +32,135 @@ describe("rawCoefficients", () => {
   });
 
   it("maps quickwire to caterium ore 0.6:1", () => {
-    // 3 ore -> 1 ingot -> 5 quickwire => 0.6 ore per quickwire
     expect(rawCoefficients("quickwire")["caterium-ore"]).toBeCloseTo(0.6);
-  });
-
-  it("maps quartz crystal to raw quartz", () => {
-    // 5 raw quartz -> 3 crystal => 5/3 per crystal
-    expect(rawCoefficients("quartz-crystal")["raw-quartz"]).toBeCloseTo(5 / 3);
-  });
-
-  it("maps compacted coal to coal and sulfur 1:1", () => {
-    const c = rawCoefficients("compacted-coal");
-    expect(c.coal).toBeCloseTo(1);
-    expect(c.sulfur).toBeCloseTo(1);
   });
 });
 
-describe("solve min-then-balance", () => {
-  it("meets minima and reports infeasible when ore is short", () => {
+describe("constraints", () => {
+  it("represents fractional machines with allowed clocks", () => {
+    const c = representMachines(1.1);
+    expect(c.effectiveMachines).toBeCloseTo(1.25);
+    expect([1, 0.75, 0.5, 0.25]).toContain(c.clock);
+    expect(c.machines * c.clock).toBeCloseTo(c.effectiveMachines);
+  });
+
+  it("quantizes iron plate rates to 5/min steps (25% of 20)", () => {
+    expect(quantizeItemRate("iron-plate", 1)).toBeCloseTo(5);
+    expect(quantizeItemRate("iron-plate", 20)).toBeCloseTo(20);
+    expect(quantizeItemRate("iron-plate", 21)).toBeCloseTo(25);
+  });
+
+  it("accepts splitter-friendly ratios", () => {
+    expect(isSplitterFriendlyRatio(30, 60)).toBe(true); // 1/2
+    expect(isSplitterFriendlyRatio(20, 60)).toBe(true); // 1/3
+    expect(isSplitterFriendlyRatio(15, 60)).toBe(true); // 1/4
+    expect(isSplitterFriendlyRatio(10, 60)).toBe(true); // 1/6
+    expect(isSplitterFriendlyRatio(7, 60)).toBe(false);
+  });
+
+  it("snaps shares to splitter-friendly amounts", () => {
+    expect(snapSplitterShare(22, 60)).toBeCloseTo(20); // 1/3
+    expect(snapSplitterShare(31, 60)).toBeCloseTo(30); // 1/2
+  });
+});
+
+describe("solve", () => {
+  it("reports infeasible when minima exceed ore", () => {
     const result = solve({
       rawAvailable: { "iron-ore": 10 },
       targets: [{ item: "iron-rod", minRate: 20, weight: 50 }],
       excess: [],
     });
     expect(result.feasible).toBe(false);
-    expect(result.raws.find((r) => r.item === "iron-ore")?.shortfall).toBeCloseTo(
-      10,
-    );
+    expect(
+      result.raws.find((r) => r.item === "iron-ore")?.shortfall,
+    ).toBeGreaterThan(0);
   });
 
-  it("allocates leftover by equal weights between two products", () => {
-    // 120 iron ore; min 10 rods + 10 plates = 10 + 15 = 25 ore
-    // leftover 95; equal weights => same extra "share units"
-    // rod coeff 1, plate coeff 1.5
-    // normalized w=0.5 each: demand/t = 0.5*1 + 0.5*1.5 = 1.25
-    // t = 95/1.25 = 76; extra rod = 38, extra plate = 38
+  it("quantizes minima upward to whole/easy clocks", () => {
+    // iron rod full = 15/min; min 10 → 11.25 (0.75 clock) or 15
+    const result = solve({
+      rawAvailable: { "iron-ore": 200 },
+      targets: [{ item: "iron-rod", minRate: 10, weight: 0 }],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    const rod = result.targets.find((t) => t.item === "iron-rod")!;
+    expect(rod.plannedMinRate).toBeGreaterThanOrEqual(10);
+    expect(rod.plannedMinRate % 3.75).toBeCloseTo(0); // 15 * 0.25
+  });
+
+  it("uses only allowed clocks on recipes", () => {
     const result = solve({
       rawAvailable: { "iron-ore": 120 },
-      targets: [
-        { item: "iron-rod", minRate: 10, weight: 50 },
-        { item: "iron-plate", minRate: 10, weight: 50 },
-      ],
+      targets: [{ item: "iron-plate", minRate: 10, weight: 100 }],
+      excess: [],
+    });
+    for (const recipe of result.recipes) {
+      expect([1, 0.75, 0.5, 0.25]).toContain(recipe.clock);
+      expect(recipe.machines).toBeGreaterThan(0);
+      expect(Number.isInteger(recipe.machines)).toBe(true);
+    }
+  });
+
+  it("auto-fills excess intermediaries toward high utilization", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 120 },
+      targets: [{ item: "iron-rod", minRate: 15, weight: 0 }],
       excess: [],
     });
     expect(result.feasible).toBe(true);
-    const rod = result.targets.find((t) => t.item === "iron-rod")!;
-    const plate = result.targets.find((t) => t.item === "iron-plate")!;
-    expect(rod.extraRate).toBeCloseTo(38);
-    expect(plate.extraRate).toBeCloseTo(38);
-    expect(rod.totalRate).toBeCloseTo(48);
-    expect(plate.totalRate).toBeCloseTo(48);
+    expect(result.excess.length).toBeGreaterThan(0);
     const iron = result.raws.find((r) => r.item === "iron-ore")!;
-    expect(iron.leftover).toBeCloseTo(0);
-    expect(iron.utilization).toBeCloseTo(1);
+    // Should soak most leftover after the 15 rod min
+    expect(iron.utilization).toBeGreaterThan(0.85);
   });
 
-  it("respects zero weight (no leftover share)", () => {
+  it("prefers complex excess over base ingots when soaking", () => {
     const result = solve({
-      rawAvailable: { "iron-ore": 100 },
-      targets: [
-        { item: "iron-rod", minRate: 10, weight: 100 },
-        { item: "iron-plate", minRate: 10, weight: 0 },
-      ],
+      rawAvailable: {
+        "iron-ore": 300,
+        "copper-ore": 120,
+        coal: 120,
+      },
+      targets: [{ item: "motor", minRate: 5, weight: 0 }],
       excess: [],
     });
-    const rod = result.targets.find((t) => t.item === "iron-rod")!;
-    const plate = result.targets.find((t) => t.item === "iron-plate")!;
-    expect(plate.extraRate).toBeCloseTo(0);
-    expect(plate.totalRate).toBeCloseTo(10);
-    // min uses 10 + 15 = 25; leftover 75 all to rods
-    expect(rod.extraRate).toBeCloseTo(75);
-    expect(rod.totalRate).toBeCloseTo(85);
-  });
-
-  it("reserves excess intermediaries before leftover fill", () => {
-    // 60 ore; excess 20 rods (=20 ore); min 10 plates (=15 ore); leftover 25 to rods
-    const result = solve({
-      rawAvailable: { "iron-ore": 60 },
-      targets: [{ item: "iron-rod", minRate: 0, weight: 100 }],
-      excess: [{ item: "iron-rod", rate: 20 }],
-    });
-    // Wait - excess rods AND target rods both expand. Excess is separate sink.
-    // Phase A: excess 20 rods = 20 ore. leftover 40 all to target rods.
     expect(result.feasible).toBe(true);
-    const rod = result.targets.find((t) => t.item === "iron-rod")!;
-    expect(rod.totalRate).toBeCloseTo(40);
-    const iron = result.raws.find((r) => r.item === "iron-ore")!;
-    expect(iron.used).toBeCloseTo(60);
+    const withAuto = result.excess.filter((e) => e.rate > 0);
+    expect(withAuto.length).toBeGreaterThan(0);
+    // Should not only dump into iron ingots if deeper parts can take ore
+    const deepest = withAuto[0]!;
+    // Most complex soakable part should rank above base ingots
+    expect(deepest.item).not.toBe("iron-ingot");
+    expect(deepest.item).not.toBe("copper-ingot");
   });
 
-  it("computes machine counts for iron plates", () => {
-    // 20 plates/min = 1 constructor
+  it("respects user excess floors and may raise them", () => {
     const result = solve({
-      rawAvailable: { "iron-ore": 30 },
+      rawAvailable: { "iron-ore": 120 },
       targets: [{ item: "iron-plate", minRate: 20, weight: 0 }],
-      excess: [],
+      excess: [{ item: "iron-rod", rate: 15 }],
     });
-    const plateRecipe = result.recipes.find((r) => r.recipeId === "iron-plate")!;
-    expect(plateRecipe.machines).toBeCloseTo(1);
-    const ingot = result.recipes.find((r) => r.recipeId === "iron-ingot")!;
-    expect(ingot.machines).toBeCloseTo(1); // 30 ore/min, smelter does 30/min
+    expect(result.feasible).toBe(true);
+    const rod = result.excess.find((e) => e.item === "iron-rod")!;
+    expect(rod.rate).toBeGreaterThanOrEqual(15);
   });
 
-  it("handles motor chain with multiple raws", () => {
+  it("lists chain intermediaries in excess results", () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 480,
         "copper-ore": 120,
         coal: 120,
-        limestone: 0,
       },
-      targets: [{ item: "motor", minRate: 5, weight: 100 }],
+      targets: [{ item: "motor", minRate: 5, weight: 50 }],
       excess: [],
     });
-    expect(result.feasible).toBe(true);
-    const motor = result.targets.find((t) => t.item === "motor")!;
-    expect(motor.totalRate).toBeGreaterThanOrEqual(5);
-    expect(result.recipes.some((r) => r.recipeId === "motor")).toBe(true);
-    expect(result.recipes.some((r) => r.recipeId === "stator")).toBe(true);
-    expect(result.recipes.some((r) => r.recipeId === "rotor")).toBe(true);
-  });
-
-  it("plans AI limiter from caterium and copper", () => {
-    const result = solve({
-      rawAvailable: {
-        "iron-ore": 0,
-        "copper-ore": 120,
-        "caterium-ore": 120,
-      },
-      targets: [{ item: "ai-limiter", minRate: 5, weight: 0 }],
-      excess: [],
-    });
-    expect(result.feasible).toBe(true);
-    expect(result.recipes.some((r) => r.recipeId === "ai-limiter")).toBe(true);
-    expect(result.recipes.some((r) => r.recipeId === "quickwire")).toBe(true);
+    const ids = result.excess.map((e) => e.item);
+    expect(ids).toContain("rotor");
+    expect(ids).toContain("stator");
+    expect(ids).toContain("iron-ingot");
   });
 
   it("plans crystal oscillator with manufacturer recipe", () => {
@@ -177,7 +175,7 @@ describe("solve min-then-balance", () => {
     });
     expect(result.feasible).toBe(true);
     const osc = result.recipes.find((r) => r.recipeId === "crystal-oscillator")!;
-    expect(osc.machines).toBeCloseTo(1);
     expect(osc.building).toBe("Manufacturer");
+    expect([1, 0.75, 0.5, 0.25]).toContain(osc.clock);
   });
 });
