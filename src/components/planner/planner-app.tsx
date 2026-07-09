@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ItemId } from "@/data/types";
 import type { ExcessSpec, TargetSpec } from "@/lib/solver/types";
+import {
+  loadPlannerState,
+  savePlannerState,
+} from "@/lib/planner-storage";
 import { solve } from "@/lib/solver";
 import { Separator } from "@/components/ui/separator";
 import { RawInputsPanel } from "./raw-inputs-panel";
@@ -32,6 +36,27 @@ export function PlannerApp() {
   const [excessFloors, setExcessFloors] = useState<
     Partial<Record<ItemId, number>>
   >({});
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const saved = loadPlannerState();
+    if (saved) {
+      setRawAvailable(saved.rawAvailable);
+      setTargets(saved.targets);
+      setExcessFloors(saved.excessFloors);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    savePlannerState({
+      version: 1,
+      rawAvailable,
+      targets,
+      excessFloors,
+    });
+  }, [hydrated, rawAvailable, targets, excessFloors]);
 
   const excessInput: ExcessSpec[] = useMemo(
     () =>
@@ -88,8 +113,8 @@ export function PlannerApp() {
       </div>
 
       <footer className="border-t border-border/70 pt-4 text-xs text-muted-foreground">
-        Client-side only · clocks 100/75/50/25% · machine counts 2ⁿ·3ᵐ (max
-        splitter depth 5) · splitter-friendly excess branches · auto excess fill
+        Client-side only · clocks 100/75/66.67/50/33.33/25% · integer machine
+        counts · auto excess soak · state saved in this browser
       </footer>
     </div>
   );

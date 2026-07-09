@@ -2,8 +2,12 @@ import { getRecipeForProduct, recipePrimaryOutputPerMinute } from "@/data/recipe
 import { itemById } from "@/data/items";
 import type { ItemId } from "@/data/types";
 
-export const ALLOWED_CLOCKS = [1, 0.75, 0.5, 0.25] as const;
+/** Easy underclocks: quarters plus thirds (100 / 75 / 66.67 / 50 / 33.33 / 25%). */
+export const ALLOWED_CLOCKS = [1, 0.75, 2 / 3, 0.5, 1 / 3, 0.25] as const;
 export type AllowedClock = (typeof ALLOWED_CLOCKS)[number];
+
+/** Finest shared quantum of allowed clocks (lcm of 1/4 and 1/3). */
+export const CLOCK_QUANTUM = 1 / 12;
 
 const EPS = 1e-9;
 
@@ -33,10 +37,10 @@ export interface MachineConfig {
   effectiveMachines: number;
 }
 
-/** Round effective machines up to the next multiple of 0.25 (25% clock quantum). */
+/** Round effective machines up to the next shared clock quantum (1/12). */
 export function ceilEffectiveMachines(exact: number): number {
   if (exact <= EPS) return 0;
-  return Math.ceil(exact * 4 - EPS) / 4;
+  return Math.ceil(exact / CLOCK_QUANTUM - EPS) * CLOCK_QUANTUM;
 }
 
 export function isSplitterFriendlyCount(n: number): boolean {
@@ -52,13 +56,41 @@ export function isSplitterFriendlyCount(n: number): boolean {
  * higher clock.
  */
 export function representMachines(effectiveMachines: number): MachineConfig {
+  return representMachinesWithCounts(
+    effectiveMachines,
+    SPLITTER_FRIENDLY_COUNTS,
+  );
+}
+
+/**
+ * Like {@link representMachines}, but allows any integer building count.
+ * Used when soaking leftover ore so we are not forced over budget by the next
+ * 2ᵃ·3ᵇ jump (e.g. 7→8 constructors).
+ */
+export function representMachinesAny(effectiveMachines: number): MachineConfig {
+  const effective = ceilEffectiveMachines(effectiveMachines);
+  if (effective <= EPS) {
+    return { machines: 0, clock: 1, effectiveMachines: 0 };
+  }
+  const maxMachines = Math.max(
+    1,
+    Math.ceil(effective / CLOCK_QUANTUM + EPS),
+  );
+  const counts = Array.from({ length: maxMachines }, (_, i) => i + 1);
+  return representMachinesWithCounts(effectiveMachines, counts);
+}
+
+function representMachinesWithCounts(
+  effectiveMachines: number,
+  counts: readonly number[],
+): MachineConfig {
   const effective = ceilEffectiveMachines(effectiveMachines);
   if (effective <= EPS) {
     return { machines: 0, clock: 1, effectiveMachines: 0 };
   }
 
   let best: MachineConfig | null = null;
-  for (const machines of SPLITTER_FRIENDLY_COUNTS) {
+  for (const machines of counts) {
     for (const clock of ALLOWED_CLOCKS) {
       const achieved = machines * clock;
       if (achieved + EPS < effective) continue;
@@ -83,16 +115,12 @@ export function representMachines(effectiveMachines: number): MachineConfig {
     }
   }
 
-  // Fallback: next friendly count at 25%
-  const minMachines = Math.ceil(effective / 0.25 - EPS);
-  const machines =
-    SPLITTER_FRIENDLY_COUNTS.find((n) => n >= minMachines) ??
-    SPLITTER_FRIENDLY_COUNTS[SPLITTER_FRIENDLY_COUNTS.length - 1]!;
+  const minMachines = Math.ceil(effective / CLOCK_QUANTUM - EPS);
   return (
     best ?? {
-      machines,
+      machines: minMachines,
       clock: 0.25,
-      effectiveMachines: machines * 0.25,
+      effectiveMachines: minMachines * 0.25,
     }
   );
 }
@@ -110,15 +138,58 @@ export function quantizeItemRate(itemId: ItemId, desiredRate: number): number {
 }
 
 /**
- * Next discrete step for an item: prefer growing by one splitter-friendly
- * machine quantum at the item's recipe rate.
+ * Largest valid output rate ≤ desired (floor to an allowed machine/clock group).
+ * Used when growing into a leftover budget so we never overshoot.
+ */
+export function floorQuantizeItemRate(
+  itemId: ItemId,
+  desiredRate: number,
+  opts: { anyMachineCount?: boolean } = {},
+): number {
+  if (desiredRate <= EPS) return 0;
+  const recipe = getRecipeForProduct(itemId);
+  if (!recipe) return desiredRate;
+  const base = recipePrimaryOutputPerMinute(recipe);
+  if (base <= EPS) return desiredRate;
+
+  const exact = desiredRate / base;
+  let best = 0;
+
+  if (opts.anyMachineCount) {
+    // Soak lines can use any integer building count at easy clocks — leftover
+    // ore is often smaller than the next 2ᵃ·3ᵇ jump (e.g. 7 vs 8 machines).
+    const maxMachines = Math.max(
+      1,
+      Math.ceil(exact / CLOCK_QUANTUM + EPS),
+    );
+    for (let machines = 1; machines <= maxMachines; machines++) {
+      for (const clock of ALLOWED_CLOCKS) {
+        const achieved = machines * clock;
+        if (achieved <= exact + EPS && achieved > best + EPS) {
+          best = achieved;
+        }
+      }
+    }
+  } else {
+    for (const machines of SPLITTER_FRIENDLY_COUNTS) {
+      for (const clock of ALLOWED_CLOCKS) {
+        const achieved = machines * clock;
+        if (achieved <= exact + EPS && achieved > best + EPS) {
+          best = achieved;
+        }
+      }
+    }
+  }
+  return best * base;
+}
+
+/**
+ * Next discrete step for an item: one shared clock quantum of a single machine.
  */
 export function itemRateStep(itemId: ItemId): number {
   const recipe = getRecipeForProduct(itemId);
   if (!recipe) return 1;
-  // Smallest positive increase from adding 0.25 effective on a friendly count
-  // is still one 25% clock quantum of a single machine.
-  return recipePrimaryOutputPerMinute(recipe) * 0.25;
+  return recipePrimaryOutputPerMinute(recipe) * CLOCK_QUANTUM;
 }
 
 /**
@@ -268,6 +339,9 @@ export function complexityScore(itemId: ItemId): number {
   return depth * 10 + inputs;
 }
 
-export function formatClock(clock: AllowedClock): string {
+export function formatClock(clock: AllowedClock | number): string {
+  // Exact thirds display as repeating decimals players type in-game
+  if (Math.abs(clock - 2 / 3) < 1e-9) return "66.67%";
+  if (Math.abs(clock - 1 / 3) < 1e-9) return "33.33%";
   return `${Math.round(clock * 100)}%`;
 }

@@ -9,17 +9,14 @@ import type { ItemId } from "@/data/types";
 import {
   addRate,
   exactRawCoefficients,
-  expandDemandToMaps,
+  expandFactoryPlan,
   type RateMap,
 } from "./bom";
 import {
+  ALLOWED_CLOCKS,
   complexityScore,
-  itemRateStep,
-  nextExcessAbove,
   quantizeItemRate,
-  representMachines,
-  snapExcessBranch,
-  snapSplitterShare,
+  representMachinesAny,
 } from "./constraints";
 import type {
   ExcessResult,
@@ -46,35 +43,42 @@ function emptyRawMap(): RateMap {
 function expandSinks(
   sinks: { item: ItemId; rate: number }[],
 ): { recipeCrafts: Map<string, number>; raws: RateMap } {
-  const recipeCrafts = new Map<string, number>();
-  const raws = emptyRawMap();
+  // Merge identical sink items, then expand as one factory so shared
+  // intermediates are machine-quantized once (not once per sink).
+  const merged = new Map<ItemId, number>();
   for (const sink of sinks) {
     if (sink.rate <= EPS) continue;
-    expandDemandToMaps(sink.item, sink.rate, recipeCrafts, raws);
+    merged.set(sink.item, (merged.get(sink.item) ?? 0) + sink.rate);
   }
-  return { recipeCrafts, raws };
+  return expandFactoryPlan(
+    [...merged.entries()].map(([item, rate]) => ({ item, rate })),
+  );
 }
 
-function rawFits(needed: RateMap, budget: RateMap): boolean {
+function planFitsAvailable(
+  sinks: { item: ItemId; rate: number }[],
+  available: RateMap,
+): boolean {
+  const { raws } = expandSinks(sinks);
   for (const id of scarceRawIds) {
-    if ((needed.get(id) ?? 0) > (budget.get(id) ?? 0) + EPS) return false;
+    if ((raws.get(id) ?? 0) > (available.get(id) ?? 0) + EPS) return false;
   }
   return true;
 }
 
-function subtractRaws(budget: RateMap, used: RateMap): RateMap {
-  const out: RateMap = new Map(budget);
+function leftoverFromPlan(
+  sinks: { item: ItemId; rate: number }[],
+  available: RateMap,
+): RateMap {
+  const { raws } = expandSinks(sinks);
+  const leftover = emptyRawMap();
   for (const id of scarceRawIds) {
-    out.set(id, Math.max(0, (out.get(id) ?? 0) - (used.get(id) ?? 0)));
+    leftover.set(
+      id,
+      Math.max(0, (available.get(id) ?? 0) - (raws.get(id) ?? 0)),
+    );
   }
-  return out;
-}
-
-function demandRaws(itemId: ItemId, rate: number): RateMap {
-  const raws = emptyRawMap();
-  const crafts = new Map<string, number>();
-  expandDemandToMaps(itemId, rate, crafts, raws);
-  return raws;
+  return leftover;
 }
 
 function collectChainIntermediates(roots: ItemId[]): ItemId[] {
@@ -96,38 +100,67 @@ function collectChainIntermediates(roots: ItemId[]): ItemId[] {
   return [...seen].filter((id) => !itemById[id]?.isRaw && !rootSet.has(id));
 }
 
-/** Largest machine-quantized rate ≤ leftover capacity (and ≥ minRate if given). */
-function maxAffordableQuantized(
+function collectGrowthRates(
   itemId: ItemId,
+  current: number,
   leftover: RateMap,
-  minRate = 0,
-): number {
+): number[] {
+  const recipe = getRecipeForProduct(itemId);
+  if (!recipe) return [];
+  const base = recipePrimaryOutputPerMinute(recipe);
+  if (base <= EPS) return [];
+
   const coeffs = exactRawCoefficients(itemId);
-  let maxContinuous = Number.POSITIVE_INFINITY;
+  let maxAdditional = Number.POSITIVE_INFINITY;
   for (const id of scarceRawIds) {
     const c = coeffs[id] ?? 0;
     if (c <= EPS) continue;
-    maxContinuous = Math.min(maxContinuous, (leftover.get(id) ?? 0) / c);
+    maxAdditional = Math.min(maxAdditional, (leftover.get(id) ?? 0) / c);
   }
-  if (!Number.isFinite(maxContinuous) || maxContinuous < 0) maxContinuous = 0;
+  if (!Number.isFinite(maxAdditional) || maxAdditional < 0) maxAdditional = 0;
 
-  const recipe = getRecipeForProduct(itemId);
-  if (!recipe) return 0;
-  const base = recipePrimaryOutputPerMinute(recipe);
-  const step = base * 0.25;
-  if (step <= EPS) return 0;
+  // Continuous leftover plus one full machine of headroom for quantization.
+  const tryMax = current + maxAdditional + base;
+  const minClock = Math.min(...ALLOWED_CLOCKS);
+  const maxMachines = Math.max(
+    1,
+    Math.min(48, Math.ceil(tryMax / (base * minClock) + EPS)),
+  );
 
-  let rate = Math.floor(maxContinuous / step + EPS) * step;
-  const minQ = minRate > EPS ? quantizeItemRate(itemId, minRate) : 0;
-  if (minQ > EPS && rate + EPS < minQ) return 0;
-
-  while (rate > EPS) {
-    if (rawFits(demandRaws(itemId, rate), leftover)) {
-      if (minQ <= EPS || rate + EPS >= minQ) return rate;
+  const rates = new Set<number>();
+  for (let machines = 1; machines <= maxMachines; machines++) {
+    for (const clock of ALLOWED_CLOCKS) {
+      const rate = machines * clock * base;
+      if (rate > current + EPS && rate <= tryMax + EPS) rates.add(rate);
     }
-    rate = Math.max(0, rate - step);
   }
-  return 0;
+  return [...rates].sort((a, b) => a - b);
+}
+
+/** Largest rate in `rates` (ascending) that keeps the plan within `available`. */
+function largestFittingRate(
+  rates: number[],
+  setRate: (rate: number) => void,
+  restore: () => void,
+  available: RateMap,
+  buildSinks: () => { item: ItemId; rate: number }[],
+): number | null {
+  let lo = 0;
+  let hi = rates.length - 1;
+  let best: number | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const rate = rates[mid]!;
+    setRate(rate);
+    if (planFitsAvailable(buildSinks(), available)) {
+      best = rate;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  restore();
+  return best;
 }
 
 function buildItemFlows(
@@ -182,7 +215,7 @@ function buildRecipeUsages(recipeCrafts: Map<string, number>): RecipeUsage[] {
     const crafts = recipeCrafts.get(recipe.id) ?? 0;
     if (crafts <= EPS) continue;
     const exactMachines = crafts / recipeCyclesPerMinute(recipe);
-    const config = representMachines(exactMachines);
+    const config = representMachinesAny(exactMachines);
     const primary = recipe.outputs[0]!;
     usages.push({
       recipeId: recipe.id,
@@ -268,10 +301,6 @@ export function solve(input: PlannerInput): SolveResult {
   });
 
   const feasible = phaseARaws.every((r) => r.shortfall <= EPS);
-  let leftover = emptyRawMap();
-  for (const r of phaseARaws) {
-    leftover.set(r.item, feasible ? r.leftover : 0);
-  }
 
   const targetExtra = new Map<ItemId, number>();
   const excessRates = new Map<ItemId, number>();
@@ -279,9 +308,22 @@ export function solve(input: PlannerInput): SolveResult {
     excessRates.set(item, quantizeItemRate(item, rate));
   }
 
+  const buildSinks = (): { item: ItemId; rate: number }[] => {
+    const sinks: { item: ItemId; rate: number }[] = [];
+    for (const [item, rate] of plannedMins) {
+      sinks.push({ item, rate: rate + (targetExtra.get(item) ?? 0) });
+    }
+    for (const [item, rate] of excessRates) {
+      if (rate > EPS) sinks.push({ item, rate });
+    }
+    return sinks;
+  };
+
   // Phase B — leftover to targets independently by weight priority.
   // Each product only competes for the raws it actually uses, so limestone
   // can still feed Concrete when coal is already at 100%.
+  // Growth is validated against the full expanded plan (not continuous coeffs),
+  // because per-stage machine quantization makes delta costs underestimate.
   if (feasible) {
     const weighted = targets
       .filter((t) => t.weight > EPS)
@@ -289,28 +331,31 @@ export function solve(input: PlannerInput): SolveResult {
 
     if (weighted.length > 0) {
       let guard = 0;
-      while (guard++ < 500) {
+      while (guard++ < 200) {
         let progressed = false;
         for (const t of weighted) {
           const current = targetExtra.get(t.item) ?? 0;
-          const affordable = maxAffordableQuantized(t.item, leftover);
-          if (affordable <= current + EPS) continue;
+          const leftover = leftoverFromPlan(buildSinks(), available);
+          const coeffs = exactRawCoefficients(t.item);
+          const canUseLeftover = (Object.keys(coeffs) as ItemId[]).some(
+            (r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS,
+          );
+          if (!canUseLeftover) continue;
 
-          let candidate = quantizeItemRate(t.item, affordable);
-          if (candidate <= current + EPS) continue;
+          const rates = collectGrowthRates(t.item, current, leftover);
+          if (rates.length === 0) continue;
 
-          while (candidate > current + EPS) {
-            const delta = candidate - current;
-            if (rawFits(demandRaws(t.item, delta), leftover)) break;
-            candidate = Math.max(current, candidate - itemRateStep(t.item));
-            candidate = quantizeItemRate(t.item, candidate);
+          const best = largestFittingRate(
+            rates,
+            (rate) => targetExtra.set(t.item, rate),
+            () => targetExtra.set(t.item, current),
+            available,
+            buildSinks,
+          );
+          if (best !== null && best > current + EPS) {
+            targetExtra.set(t.item, best);
+            progressed = true;
           }
-          if (candidate <= current + EPS) continue;
-
-          const delta = candidate - current;
-          targetExtra.set(t.item, candidate);
-          leftover = subtractRaws(leftover, demandRaws(t.item, delta));
-          progressed = true;
         }
         if (!progressed) break;
       }
@@ -330,11 +375,7 @@ export function solve(input: PlannerInput): SolveResult {
     const coeffs = exactRawCoefficients(id);
     const uses = Object.keys(coeffs) as ItemId[];
     if (uses.length === 0) continue;
-    if (
-      uses.some((r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS)
-    ) {
-      soakCandidates.add(id);
-    }
+    soakCandidates.add(id);
   }
 
   const fillOrder = [...soakCandidates].sort(
@@ -343,72 +384,35 @@ export function solve(input: PlannerInput): SolveResult {
 
   if (feasible) {
     let guard = 0;
-    while (guard++ < 800) {
+    while (guard++ < 400) {
       let progressed = false;
-
-      const currentSinks: { item: ItemId; rate: number }[] = [];
-      for (const [item, rate] of plannedMins) {
-        currentSinks.push({ item, rate: rate + (targetExtra.get(item) ?? 0) });
-      }
-      for (const [item, rate] of excessRates) {
-        if (rate > EPS) currentSinks.push({ item, rate });
-      }
-      const currentExpand = expandSinks(currentSinks);
-      const downstreamByItem = new Map<ItemId, number>();
-      for (const recipe of allRecipes) {
-        const crafts = currentExpand.recipeCrafts.get(recipe.id) ?? 0;
-        if (crafts <= EPS) continue;
-        for (const input of recipe.inputs) {
-          if (itemById[input.item]?.isRaw) continue;
-          downstreamByItem.set(
-            input.item,
-            (downstreamByItem.get(input.item) ?? 0) + input.amount * crafts,
-          );
-        }
-      }
+      const leftover = leftoverFromPlan(buildSinks(), available);
+      const hasLeftover = [...leftover.values()].some((v) => v > EPS);
+      if (!hasLeftover) break;
 
       for (const item of fillOrder) {
+        const coeffs = exactRawCoefficients(item);
+        const canUseLeftover = (Object.keys(coeffs) as ItemId[]).some(
+          (r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS,
+        );
+        if (!canUseLeftover) continue;
+
         const current = excessRates.get(item) ?? 0;
-        const affordable = maxAffordableQuantized(item, leftover);
-        if (affordable <= current + EPS) continue;
+        const rates = collectGrowthRates(item, current, leftover);
+        if (rates.length === 0) continue;
 
-        const downstream = downstreamByItem.get(item) ?? 0;
-        // Largest legal splitter-friendly excess ≤ leftover capacity
-        let next = snapExcessBranch(affordable, downstream);
-        next = quantizeItemRate(item, next);
-        if (downstream > EPS) {
-          next = snapExcessBranch(next, downstream);
-          next = quantizeItemRate(item, next);
+        const best = largestFittingRate(
+          rates,
+          (rate) => excessRates.set(item, rate),
+          () => excessRates.set(item, current),
+          available,
+          buildSinks,
+        );
+        if (best !== null && best > current + EPS) {
+          excessRates.set(item, best);
+          progressed = true;
+          break;
         }
-        if (next <= current + EPS) {
-          next = nextExcessAbove(current, affordable, downstream);
-          next = quantizeItemRate(item, next);
-        }
-        if (next <= current + EPS) continue;
-
-        if (!rawFits(demandRaws(item, next - current), leftover)) {
-          let probe = snapExcessBranch(next - EPS, downstream);
-          probe = quantizeItemRate(item, probe);
-          let found = false;
-          for (let i = 0; i < 40; i++) {
-            if (probe <= current + EPS) break;
-            if (rawFits(demandRaws(item, probe - current), leftover)) {
-              next = probe;
-              found = true;
-              break;
-            }
-            probe = snapExcessBranch(probe - EPS, downstream);
-            probe = quantizeItemRate(item, probe);
-          }
-          if (!found) continue;
-        }
-
-        const applied = next - current;
-        if (applied <= EPS) continue;
-        excessRates.set(item, next);
-        leftover = subtractRaws(leftover, demandRaws(item, applied));
-        progressed = true;
-        break;
       }
       if (!progressed) break;
     }
@@ -425,9 +429,8 @@ export function solve(input: PlannerInput): SolveResult {
   for (const [item, rate] of excessRates) {
     finalSinkMap.set(item, (finalSinkMap.get(item) ?? 0) + rate);
   }
-  for (const [item, rate] of finalSinkMap) {
-    finalSinkMap.set(item, quantizeItemRate(item, rate));
-  }
+  // Rates are already machine-quantized per sink; do not re-ceil the sum
+  // (that was overshooting scarce raw budgets).
 
   const final = expandSinks(
     [...finalSinkMap.entries()].map(([item, rate]) => ({ item, rate })),

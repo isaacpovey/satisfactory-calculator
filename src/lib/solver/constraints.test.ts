@@ -13,17 +13,20 @@ import {
 } from "./constraints";
 
 describe("ceilEffectiveMachines", () => {
-  it("ceils to quarter machines", () => {
-    expect(ceilEffectiveMachines(1.01)).toBeCloseTo(1.25);
+  it("ceils to the shared 1/12 clock quantum", () => {
+    expect(ceilEffectiveMachines(1.01)).toBeCloseTo(1 + 1 / 12);
     expect(ceilEffectiveMachines(1)).toBeCloseTo(1);
-    expect(ceilEffectiveMachines(0.76)).toBeCloseTo(1);
+    expect(ceilEffectiveMachines(0.76)).toBeCloseTo(0.75 + 1 / 12);
+    expect(ceilEffectiveMachines(1 / 3)).toBeCloseTo(1 / 3);
   });
 });
 
 describe("formatClock", () => {
-  it("formats percent", () => {
+  it("formats percent including thirds", () => {
     expect(formatClock(0.75)).toBe("75%");
     expect(formatClock(1)).toBe("100%");
+    expect(formatClock(2 / 3)).toBe("66.67%");
+    expect(formatClock(1 / 3)).toBe("33.33%");
   });
 });
 
@@ -48,6 +51,12 @@ describe("splitter-friendly machine counts", () => {
     expect(c.clock).toBe(0.75);
   });
 
+  it("uses one building at 33.33% for 1/3 effective", () => {
+    const c = representMachines(1 / 3);
+    expect(c.machines).toBe(1);
+    expect(c.clock).toBeCloseTo(1 / 3);
+  });
+
   it("never uses non-friendly machine counts", () => {
     for (const exact of [1.1, 2.3, 4.1, 5, 7, 11]) {
       const c = representMachines(exact);
@@ -59,8 +68,10 @@ describe("splitter-friendly machine counts", () => {
 
 describe("quantize and splitters", () => {
   it("quantizes rods to allowed machine groups", () => {
-    // 1 rod/min → at least 0.25 machine → 3.75/min
+    // 1 rod/min → at least 0.25 machine (smallest allowed clock) → 3.75/min
     expect(quantizeItemRate("iron-rod", 1)).toBeCloseTo(3.75);
+    // 1/3 clock is available for finer rates
+    expect(quantizeItemRate("iron-rod", 4)).toBeCloseTo(5); // 1 @ 1/3
   });
 
   it("accepts nested 1/2 and 1/3 ratios including 1/12", () => {
