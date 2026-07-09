@@ -27,6 +27,22 @@ describe("rawCoefficients", () => {
   it("maps concrete to limestone 3:1", () => {
     expect(rawCoefficients("concrete")["limestone"]).toBeCloseTo(3);
   });
+
+  it("maps quickwire to caterium ore 0.6:1", () => {
+    // 3 ore -> 1 ingot -> 5 quickwire => 0.6 ore per quickwire
+    expect(rawCoefficients("quickwire")["caterium-ore"]).toBeCloseTo(0.6);
+  });
+
+  it("maps quartz crystal to raw quartz", () => {
+    // 5 raw quartz -> 3 crystal => 5/3 per crystal
+    expect(rawCoefficients("quartz-crystal")["raw-quartz"]).toBeCloseTo(5 / 3);
+  });
+
+  it("maps compacted coal to coal and sulfur 1:1", () => {
+    const c = rawCoefficients("compacted-coal");
+    expect(c.coal).toBeCloseTo(1);
+    expect(c.sulfur).toBeCloseTo(1);
+  });
 });
 
 describe("solve min-then-balance", () => {
@@ -132,5 +148,36 @@ describe("solve min-then-balance", () => {
     expect(result.recipes.some((r) => r.recipeId === "motor")).toBe(true);
     expect(result.recipes.some((r) => r.recipeId === "stator")).toBe(true);
     expect(result.recipes.some((r) => r.recipeId === "rotor")).toBe(true);
+  });
+
+  it("plans AI limiter from caterium and copper", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 0,
+        "copper-ore": 120,
+        "caterium-ore": 120,
+      },
+      targets: [{ item: "ai-limiter", minRate: 5, weight: 0 }],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    expect(result.recipes.some((r) => r.recipeId === "ai-limiter")).toBe(true);
+    expect(result.recipes.some((r) => r.recipeId === "quickwire")).toBe(true);
+  });
+
+  it("plans crystal oscillator with manufacturer recipe", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 300,
+        "copper-ore": 60,
+        "raw-quartz": 200,
+      },
+      targets: [{ item: "crystal-oscillator", minRate: 1, weight: 0 }],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    const osc = result.recipes.find((r) => r.recipeId === "crystal-oscillator")!;
+    expect(osc.machines).toBeCloseTo(1);
+    expect(osc.building).toBe("Manufacturer");
   });
 });

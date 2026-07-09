@@ -1,6 +1,6 @@
 # Resource-Max Satisfactory Planner
 
-Client-side Next.js planner for Satisfactory (Tier 0–4, standard recipes). Enter ore rates and minimum end-product targets; leftover capacity is split by balance sliders. Optional excess intermediary sinks are supported.
+Client-side Next.js planner for Satisfactory (Tier 0–4 standard recipes plus early MAM Caterium, Quartz, and Sulfur chains). Enter ore rates and minimum end-product targets; leftover capacity is split by balance sliders. Optional excess intermediary sinks are supported.
 
 ## Stack
 

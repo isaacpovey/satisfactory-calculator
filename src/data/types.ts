@@ -4,6 +4,9 @@ export type ItemId =
   | "limestone"
   | "coal"
   | "water"
+  | "caterium-ore"
+  | "raw-quartz"
+  | "sulfur"
   | "iron-ingot"
   | "copper-ingot"
   | "iron-plate"
@@ -24,13 +27,23 @@ export type ItemId =
   | "encased-industrial-beam"
   | "stator"
   | "motor"
-  | "automated-wiring";
+  | "automated-wiring"
+  | "caterium-ingot"
+  | "quickwire"
+  | "ai-limiter"
+  | "quartz-crystal"
+  | "silica"
+  | "crystal-oscillator"
+  | "compacted-coal"
+  | "black-powder"
+  | "nobelisk";
 
 export type BuildingId =
   | "smelter"
   | "constructor"
   | "assembler"
   | "foundry"
+  | "manufacturer"
   | "water-extractor";
 
 export interface ItemAmount {

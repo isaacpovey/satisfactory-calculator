@@ -5,6 +5,7 @@ export const buildings: Building[] = [
   { id: "constructor", name: "Constructor" },
   { id: "assembler", name: "Assembler" },
   { id: "foundry", name: "Foundry" },
+  { id: "manufacturer", name: "Manufacturer" },
   { id: "water-extractor", name: "Water Extractor" },
 ];
 
@@ -14,6 +15,9 @@ export const items: Item[] = [
   { id: "limestone", name: "Limestone", isRaw: true, tier: 0 },
   { id: "coal", name: "Coal", isRaw: true, tier: 3 },
   { id: "water", name: "Water", isRaw: true, isUnlimited: true, tier: 3 },
+  { id: "caterium-ore", name: "Caterium Ore", isRaw: true, tier: 0 },
+  { id: "raw-quartz", name: "Raw Quartz", isRaw: true, tier: 0 },
+  { id: "sulfur", name: "Sulfur", isRaw: true, tier: 0 },
   { id: "iron-ingot", name: "Iron Ingot", isRaw: false, tier: 0 },
   { id: "copper-ingot", name: "Copper Ingot", isRaw: false, tier: 0 },
   { id: "iron-plate", name: "Iron Plate", isRaw: false, tier: 0 },
@@ -50,6 +54,20 @@ export const items: Item[] = [
   { id: "stator", name: "Stator", isRaw: false, tier: 4 },
   { id: "motor", name: "Motor", isRaw: false, tier: 4 },
   { id: "automated-wiring", name: "Automated Wiring", isRaw: false, tier: 4 },
+  { id: "caterium-ingot", name: "Caterium Ingot", isRaw: false, tier: 0 },
+  { id: "quickwire", name: "Quickwire", isRaw: false, tier: 0 },
+  { id: "ai-limiter", name: "AI Limiter", isRaw: false, tier: 0 },
+  { id: "quartz-crystal", name: "Quartz Crystal", isRaw: false, tier: 0 },
+  { id: "silica", name: "Silica", isRaw: false, tier: 0 },
+  {
+    id: "crystal-oscillator",
+    name: "Crystal Oscillator",
+    isRaw: false,
+    tier: 0,
+  },
+  { id: "compacted-coal", name: "Compacted Coal", isRaw: false, tier: 0 },
+  { id: "black-powder", name: "Black Powder", isRaw: false, tier: 0 },
+  { id: "nobelisk", name: "Nobelisk", isRaw: false, tier: 0 },
 ];
 
 export const itemById: Record<ItemId, Item> = Object.fromEntries(

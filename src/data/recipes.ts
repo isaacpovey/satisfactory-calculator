@@ -1,8 +1,8 @@
 import type { ItemId, Recipe } from "./types";
 
 /**
- * Standard (non-alternate) recipes through Tier 4.
- * Rates match Satisfactory wiki craft times / amounts.
+ * Standard (non-alternate) recipes through Tier 4, plus early MAM chains
+ * (Caterium, Quartz, Sulfur). Rates match Satisfactory wiki craft times / amounts.
  */
 export const recipes: Recipe[] = [
   {
@@ -223,6 +223,106 @@ export const recipes: Recipe[] = [
     ],
     outputs: [{ item: "automated-wiring", amount: 1 }],
     tier: 4,
+  },
+  // --- MAM: Caterium ---
+  {
+    id: "caterium-ingot",
+    name: "Caterium Ingot",
+    building: "smelter",
+    durationSec: 4,
+    inputs: [{ item: "caterium-ore", amount: 3 }],
+    outputs: [{ item: "caterium-ingot", amount: 1 }],
+    tier: 0,
+  },
+  {
+    id: "quickwire",
+    name: "Quickwire",
+    building: "constructor",
+    durationSec: 5,
+    inputs: [{ item: "caterium-ingot", amount: 1 }],
+    outputs: [{ item: "quickwire", amount: 5 }],
+    tier: 0,
+  },
+  {
+    id: "ai-limiter",
+    name: "AI Limiter",
+    building: "assembler",
+    durationSec: 12,
+    inputs: [
+      { item: "copper-sheet", amount: 5 },
+      { item: "quickwire", amount: 20 },
+    ],
+    outputs: [{ item: "ai-limiter", amount: 1 }],
+    tier: 0,
+  },
+  // --- MAM: Quartz ---
+  {
+    id: "quartz-crystal",
+    name: "Quartz Crystal",
+    building: "constructor",
+    durationSec: 8,
+    inputs: [{ item: "raw-quartz", amount: 5 }],
+    outputs: [{ item: "quartz-crystal", amount: 3 }],
+    tier: 0,
+  },
+  {
+    id: "silica",
+    name: "Silica",
+    building: "constructor",
+    durationSec: 8,
+    inputs: [{ item: "raw-quartz", amount: 3 }],
+    outputs: [{ item: "silica", amount: 5 }],
+    tier: 0,
+  },
+  {
+    id: "crystal-oscillator",
+    name: "Crystal Oscillator",
+    building: "manufacturer",
+    durationSec: 120,
+    inputs: [
+      { item: "quartz-crystal", amount: 36 },
+      { item: "cable", amount: 28 },
+      { item: "reinforced-iron-plate", amount: 5 },
+    ],
+    outputs: [{ item: "crystal-oscillator", amount: 2 }],
+    tier: 0,
+  },
+  // --- MAM: Sulfur ---
+  {
+    id: "compacted-coal",
+    name: "Compacted Coal",
+    building: "assembler",
+    durationSec: 12,
+    inputs: [
+      { item: "coal", amount: 5 },
+      { item: "sulfur", amount: 5 },
+    ],
+    outputs: [{ item: "compacted-coal", amount: 5 }],
+    tier: 0,
+  },
+  {
+    id: "black-powder",
+    name: "Black Powder",
+    building: "assembler",
+    durationSec: 4,
+    inputs: [
+      { item: "coal", amount: 1 },
+      { item: "sulfur", amount: 1 },
+    ],
+    outputs: [{ item: "black-powder", amount: 2 }],
+    tier: 0,
+  },
+  {
+    id: "nobelisk",
+    name: "Nobelisk",
+    building: "assembler",
+    durationSec: 6,
+    inputs: [
+      { item: "black-powder", amount: 2 },
+      { item: "steel-pipe", amount: 2 },
+    ],
+    outputs: [{ item: "nobelisk", amount: 1 }],
+    tier: 0,
   },
 ];
 

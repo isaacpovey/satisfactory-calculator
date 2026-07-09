@@ -15,6 +15,9 @@ const defaultRaws: Partial<Record<ItemId, number>> = {
   "copper-ore": 60,
   limestone: 60,
   coal: 60,
+  "caterium-ore": 60,
+  "raw-quartz": 60,
+  sulfur: 60,
 };
 
 const defaultTargets: TargetSpec[] = [
@@ -37,7 +40,7 @@ export function PlannerApp() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
       <header className="space-y-2">
         <p className="text-sm font-medium tracking-wide text-primary">
-          Tier 0–4 · Standard recipes
+          Tier 0–4 · MAM Caterium / Quartz / Sulfur
         </p>
         <h1 className="font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
           Resource-Max Planner
