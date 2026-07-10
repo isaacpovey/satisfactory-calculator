@@ -36,7 +36,8 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-`vercel.json` configures them for Vercel. Other static hosts must apply equivalent headers.
+`next dev` applies them via `next.config.ts`. `vercel.json` configures them for Vercel.
+Other static hosts must apply equivalent headers.
 
 The exact solver uses up to eight logical cores, reserving one core for browser responsiveness.
 Long solves show the active lexicographic objective phase and elapsed time after 15 seconds.
