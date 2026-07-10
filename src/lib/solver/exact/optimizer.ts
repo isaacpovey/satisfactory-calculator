@@ -1,4 +1,5 @@
 import {
+  type BoolVar,
   CpModel,
   CpSat,
   CpSolver,
@@ -63,11 +64,18 @@ interface WithdrawalVariable {
   readonly upperBound: bigint;
 }
 
+interface RoutingVariable {
+  readonly item: ItemId;
+  readonly variable: IntVar;
+  readonly upperBound: bigint;
+}
+
 interface ModelState {
   readonly model: CpModel;
   readonly patterns: readonly PatternVariable[];
   readonly targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
   readonly excessVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
+  readonly routingVariables: readonly RoutingVariable[];
   readonly objectives: readonly {
     readonly label: string;
     readonly maximize: boolean;
@@ -317,11 +325,147 @@ function addConservationRows(
   return { targetVariables, excessVariables };
 }
 
+function addPositiveActivity(
+  model: CpModel,
+  variable: IntVar,
+  upperBound: bigint,
+  name: string,
+): BoolVar {
+  const activity = model.newBoolVar(name);
+  if (upperBound === ZERO_BIGINT) {
+    model.addEquality(activity, 0);
+    return activity;
+  }
+  const safeUpperBound = checkedSafeInteger(upperBound, `${name} activity upper bound`);
+  model.addLinearConstraint(variable, 1, safeUpperBound).onlyEnforceIf(activity);
+  model.addEquality(variable, 0).onlyEnforceIf(activity.not());
+  return activity;
+}
+
+function addRoutingVariables(
+  input: ExactOptimizerInput,
+  model: CpModel,
+  patterns: readonly PatternVariable[],
+  targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>,
+  excessVariables: ReadonlyMap<ItemId, WithdrawalVariable>,
+): readonly RoutingVariable[] {
+  const recipeActivities = new Map<string, BoolVar>();
+  for (const recipe of input.graph.recipes) {
+    const recipePatterns = patterns.filter((entry) => entry.pattern.recipeId === recipe.id);
+    const activity = model.newBoolVar(`recipe_active_${recipe.id}`);
+    const laneExpression = LinearExpr.sum(recipePatterns.map((entry) => entry.variable));
+    const laneUpperBound = recipePatterns.reduce(
+      (total, entry) => total + entry.upperBound,
+      ZERO_BIGINT,
+    );
+    if (laneUpperBound === ZERO_BIGINT) {
+      model.addEquality(activity, 0);
+    } else {
+      model
+        .addLinearConstraint(
+          laneExpression,
+          1,
+          checkedSafeInteger(laneUpperBound, `${recipe.id} selected-bank upper bound`),
+        )
+        .onlyEnforceIf(activity);
+      model.addEquality(laneExpression, 0).onlyEnforceIf(activity.not());
+    }
+    recipeActivities.set(recipe.id, activity);
+  }
+
+  const targetActivities = new Map<ItemId, BoolVar>();
+  for (const [itemId, withdrawal] of targetVariables) {
+    targetActivities.set(
+      itemId,
+      addPositiveActivity(
+        model,
+        withdrawal.variable,
+        withdrawal.upperBound,
+        `target_active_${itemId}`,
+      ),
+    );
+  }
+  const excessActivities = new Map<ItemId, BoolVar>();
+  for (const [itemId, withdrawal] of excessVariables) {
+    excessActivities.set(
+      itemId,
+      addPositiveActivity(
+        model,
+        withdrawal.variable,
+        withdrawal.upperBound,
+        `excess_active_${itemId}`,
+      ),
+    );
+  }
+
+  const routingVariables: RoutingVariable[] = [];
+  for (const item of input.graph.items) {
+    if (item.isRaw) continue;
+    const producer = input.graph.producerByItem.get(item.id);
+    if (!producer) throw new Error(`Missing producer for routed item: ${item.id}`);
+    const outputPatterns = patterns.filter((entry) => entry.pattern.recipeId === producer.id);
+    const outputLaneExpression = LinearExpr.sum(outputPatterns.map((entry) => entry.variable));
+    const outputLaneUpperBound = outputPatterns.reduce(
+      (total, entry) => total + entry.upperBound,
+      ZERO_BIGINT,
+    );
+    const destinations: BoolVar[] = input.graph.recipes
+      .filter((recipe) => recipe.inputs.some((inputRate) => inputRate.item === item.id))
+      .map((recipe) => {
+        const activity = recipeActivities.get(recipe.id);
+        if (!activity) throw new Error(`Missing activity variable for recipe: ${recipe.id}`);
+        return activity;
+      });
+    const targetActivity = targetActivities.get(item.id);
+    if (targetActivity) destinations.push(targetActivity);
+    const excessActivity = excessActivities.get(item.id);
+    if (excessActivity) destinations.push(excessActivity);
+
+    const destinationUpperBound = BigInt(destinations.length);
+    const routingUpperBound = (destinationUpperBound + ONE_BIGINT) / BigInt(2);
+    const routing = model.newIntVar(
+      0,
+      checkedSafeInteger(routingUpperBound, `${item.id} routing-device upper bound`),
+      `routing_devices_${item.id}`,
+    );
+    const routingNeeded = model.newBoolVar(`routing_needed_${item.id}`);
+    if (destinationUpperBound === ZERO_BIGINT) {
+      model.addEquality(routingNeeded, 0);
+      model.addEquality(routing, 0);
+    } else {
+      const destinationExpression = LinearExpr.sum(destinations);
+      const destinationLaneDifference =
+        LinearExpr.from(destinationExpression).minus(outputLaneExpression);
+      model
+        .addLinearConstraint(
+          destinationLaneDifference,
+          1,
+          checkedSafeInteger(destinationUpperBound, `${item.id} destination upper bound`),
+        )
+        .onlyEnforceIf(routingNeeded);
+      model
+        .addLinearConstraint(
+          destinationLaneDifference,
+          checkedSafeInteger(-outputLaneUpperBound, `${item.id} lane-difference lower bound`),
+          0,
+        )
+        .onlyEnforceIf(routingNeeded.not());
+      model.addEquality(routing, 0).onlyEnforceIf(routingNeeded.not());
+      model
+        .addLinearConstraint(LinearExpr.term(routing, 2).minus(destinationLaneDifference), 0, 1)
+        .onlyEnforceIf(routingNeeded);
+    }
+    routingVariables.push({ item: item.id, variable: routing, upperBound: routingUpperBound });
+  }
+  return routingVariables;
+}
+
 function objectiveTerms(
   input: ExactOptimizerInput,
   patterns: readonly PatternVariable[],
   targets: readonly NormalizedTarget[],
   targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>,
+  routingVariables: readonly RoutingVariable[],
 ): ModelState["objectives"] {
   const scarceSet = new Set(input.graph.scarceRawIds);
   const scarceRawTerms = patterns.map((entry) => {
@@ -350,7 +494,7 @@ function objectiveTerms(
     coefficient: new Rational(ONE_BIGINT),
     upperBound: entry.upperBound,
   }));
-  const deviceTerms = patterns.map((entry) => {
+  const internalDeviceTerms = patterns.map((entry) => {
     const recipe = input.graph.recipeById.get(entry.pattern.recipeId);
     if (!recipe) throw new Error(`Missing recipe for bank pattern: ${entry.pattern.recipeId}`);
     return {
@@ -359,6 +503,11 @@ function objectiveTerms(
       upperBound: entry.upperBound,
     };
   });
+  const routingDeviceTerms = routingVariables.map((entry) => ({
+    variable: entry.variable,
+    coefficient: new Rational(ONE_BIGINT),
+    upperBound: entry.upperBound,
+  }));
   const stableTerms = patterns.map((entry) => ({
     variable: entry.variable,
     coefficient: new Rational(BigInt(entry.order + 1)),
@@ -369,7 +518,11 @@ function objectiveTerms(
     { label: "weighted target output", maximize: true, terms: weightedTargetTerms },
     { label: "physical machines", maximize: false, terms: machineTerms },
     { label: "groups", maximize: false, terms: groupTerms },
-    { label: "internal splitter and merger devices", maximize: false, terms: deviceTerms },
+    {
+      label: "total splitter and merger devices",
+      maximize: false,
+      terms: [...internalDeviceTerms, ...routingDeviceTerms],
+    },
     { label: "stable bank order", maximize: false, terms: stableTerms },
   ];
 }
@@ -385,11 +538,25 @@ function buildModel(
   const patterns = createPatternVariables(input, model, beltCapacity);
   addRawConstraints(input, model, patterns);
   const withdrawals = addConservationRows(input, model, patterns, targets, excess);
+  const routingVariables = addRoutingVariables(
+    input,
+    model,
+    patterns,
+    withdrawals.targetVariables,
+    withdrawals.excessVariables,
+  );
   return {
     model,
     patterns,
     ...withdrawals,
-    objectives: objectiveTerms(input, patterns, targets, withdrawals.targetVariables),
+    routingVariables,
+    objectives: objectiveTerms(
+      input,
+      patterns,
+      targets,
+      withdrawals.targetVariables,
+      routingVariables,
+    ),
   };
 }
 
@@ -538,6 +705,21 @@ function createResult(
       };
     });
   const rawByItem = new Map(rawResults.map((raw) => [raw.item, raw] as const));
+  const internalSplitterMergerDevices = banks.reduce((total, bank) => {
+    const recipe = input.graph.recipeById.get(bank.recipeId);
+    if (!recipe) throw new Error(`Missing selected recipe: ${bank.recipeId}`);
+    const perBank = equalLaneTreeDevices(bank.machines) * BigInt(recipe.inputs.length + 1);
+    return total + perBank * bank.multiplicity;
+  }, ZERO_BIGINT);
+  const routingSplitterDevices = state.routingVariables.reduce((total, entry) => {
+    const value = solver.value(entry.variable);
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(
+        `Non-integral routing-device count returned for ${entry.item}: ${value}`,
+      );
+    }
+    return total + BigInt(value);
+  }, ZERO_BIGINT);
   const objective: ExactObjectiveVector = {
     scarceRawItemsPerMinute: input.graph.scarceRawIds.reduce(
       (total, itemId) => total.add(rawByItem.get(itemId)?.used ?? ZERO),
@@ -552,12 +734,9 @@ function createResult(
       ZERO_BIGINT,
     ),
     groups: banks.reduce((total, bank) => total + bank.multiplicity, ZERO_BIGINT),
-    internalSplitterMergerDevices: banks.reduce((total, bank) => {
-      const recipe = input.graph.recipeById.get(bank.recipeId);
-      if (!recipe) throw new Error(`Missing selected recipe: ${bank.recipeId}`);
-      const perBank = equalLaneTreeDevices(bank.machines) * BigInt(recipe.inputs.length + 1);
-      return total + perBank * bank.multiplicity;
-    }, ZERO_BIGINT),
+    internalSplitterMergerDevices,
+    routingSplitterDevices,
+    totalSplitterMergerDevices: internalSplitterMergerDevices + routingSplitterDevices,
   };
   return {
     feasible: true,

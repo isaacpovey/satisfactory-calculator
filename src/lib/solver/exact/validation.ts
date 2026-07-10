@@ -58,6 +58,11 @@ function laneTreeDevices(count: bigint): bigint {
   return devices;
 }
 
+function routingDevices(destinations: bigint, outputLanes: bigint): bigint {
+  const additionalLanes = destinations - outputLanes;
+  return additionalLanes > ZERO_BIGINT ? (additionalLanes + ONE_BIGINT) / TWO_BIGINT : ZERO_BIGINT;
+}
+
 function mapMatches(
   actual: ReadonlyMap<ItemId, Rational>,
   expectedEntries: readonly { readonly item: ItemId; readonly rate: Rational }[],
@@ -157,9 +162,11 @@ export function validateExactSolution(
   const consumed = new Map<ItemId, Rational>();
   const effectiveByRecipe = new Map<string, Rational>();
   const selectedKeys = new Set<string>();
+  const activeRecipes = new Set<string>();
+  const outputLanesByItem = new Map<ItemId, bigint>();
   let physicalMachines = ZERO_BIGINT;
   let groups = ZERO_BIGINT;
-  let devices = ZERO_BIGINT;
+  let internalDevices = ZERO_BIGINT;
 
   for (const bank of result.selectedBanks) {
     const key = `${bank.recipeId}|${bank.machines}|${bank.clock.toFractionString()}`;
@@ -174,9 +181,16 @@ export function validateExactSolution(
       recipe.id,
       (effectiveByRecipe.get(recipe.id) ?? ZERO).add(totalEffective),
     );
+    activeRecipes.add(recipe.id);
+    for (const output of recipe.outputs) {
+      outputLanesByItem.set(
+        output.item,
+        (outputLanesByItem.get(output.item) ?? ZERO_BIGINT) + bank.multiplicity,
+      );
+    }
     physicalMachines += bank.machines * bank.multiplicity;
     groups += bank.multiplicity;
-    devices +=
+    internalDevices +=
       laneTreeDevices(bank.machines) *
       BigInt(recipe.inputs.length + recipe.outputs.length) *
       bank.multiplicity;
@@ -325,6 +339,28 @@ export function validateExactSolution(
     (total, target) => total.add(target.rate.multiply(target.weight)),
     ZERO,
   );
+  let routingSplitterDevices = ZERO_BIGINT;
+  for (const item of input.graph.items) {
+    if (item.isRaw) continue;
+    let destinations = BigInt(
+      input.graph.recipes.filter(
+        (recipe) =>
+          activeRecipes.has(recipe.id) &&
+          recipe.inputs.some((inputRate) => inputRate.item === item.id),
+      ).length,
+    );
+    if ((targetByItem.get(item.id)?.rate ?? ZERO).compare(0) > 0) {
+      destinations += ONE_BIGINT;
+    }
+    if ((excessByItem.get(item.id)?.rate ?? ZERO).compare(0) > 0) {
+      destinations += ONE_BIGINT;
+    }
+    routingSplitterDevices += routingDevices(
+      destinations,
+      outputLanesByItem.get(item.id) ?? ZERO_BIGINT,
+    );
+  }
+  const totalSplitterMergerDevices = internalDevices + routingSplitterDevices;
   if (!result.objective.scarceRawItemsPerMinute.equals(scarceRawItemsPerMinute)) {
     issues.push("Reported scarce-raw objective is incorrect");
   }
@@ -335,8 +371,14 @@ export function validateExactSolution(
     issues.push("Reported physical-machine objective is incorrect");
   }
   if (result.objective.groups !== groups) issues.push("Reported group objective is incorrect");
-  if (result.objective.internalSplitterMergerDevices !== devices) {
+  if (result.objective.internalSplitterMergerDevices !== internalDevices) {
     issues.push("Reported internal-device objective is incorrect");
+  }
+  if (result.objective.routingSplitterDevices !== routingSplitterDevices) {
+    issues.push("Reported routing-device objective is incorrect");
+  }
+  if (result.objective.totalSplitterMergerDevices !== totalSplitterMergerDevices) {
+    issues.push("Reported total-device objective is incorrect");
   }
 
   return { valid: issues.length === 0, issues };

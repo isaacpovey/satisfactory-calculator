@@ -75,6 +75,8 @@ export interface ExactObjectiveVector {
   readonly physicalMachines: bigint;
   readonly groups: bigint;
   readonly internalSplitterMergerDevices: bigint;
+  readonly routingSplitterDevices: bigint;
+  readonly totalSplitterMergerDevices: bigint;
 }
 
 export type ExactProofStatus = "OPTIMAL" | "INFEASIBLE" | "CANCELLED";

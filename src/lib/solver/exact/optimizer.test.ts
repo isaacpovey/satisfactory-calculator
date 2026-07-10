@@ -71,9 +71,9 @@ function compareObjectives(left: ExactObjectiveVector, right: ExactObjectiveVect
         ? -1
         : 0) ||
     (left.groups < right.groups ? 1 : left.groups > right.groups ? -1 : 0) ||
-    (left.internalSplitterMergerDevices < right.internalSplitterMergerDevices
+    (left.totalSplitterMergerDevices < right.totalSplitterMergerDevices
       ? 1
-      : left.internalSplitterMergerDevices > right.internalSplitterMergerDevices
+      : left.totalSplitterMergerDevices > right.totalSplitterMergerDevices
         ? -1
         : 0)
   );
@@ -120,6 +120,8 @@ function bruteForceTiny(input: ExactOptimizerInput): ExactObjectiveVector {
         physicalMachines: machines,
         groups,
         internalSplitterMergerDevices: devices,
+        routingSplitterDevices: BigInt(0),
+        totalSplitterMergerDevices: devices,
       };
       if (best === null || compareObjectives(candidate, best) > 0) best = candidate;
       return;
@@ -161,6 +163,8 @@ describe("solveExactProduction", () => {
     expect(result.objective?.internalSplitterMergerDevices).toBe(
       brute.internalSplitterMergerDevices,
     );
+    expect(result.objective?.routingSplitterDevices).toBe(brute.routingSplitterDevices);
+    expect(result.objective?.totalSplitterMergerDevices).toBe(brute.totalSplitterMergerDevices);
     expect(validateExactSolution(input, result)).toEqual({ valid: true, issues: [] });
 
     const tampered = {
@@ -170,6 +174,18 @@ describe("solveExactProduction", () => {
     expect(validateExactSolution(input, tampered)).toMatchObject({
       valid: false,
       issues: ["Reported group objective is incorrect"],
+    });
+
+    const tamperedRouting = {
+      ...result,
+      objective: {
+        ...result.objective!,
+        routingSplitterDevices: result.objective!.routingSplitterDevices + BigInt(1),
+      },
+    };
+    expect(validateExactSolution(input, tamperedRouting)).toMatchObject({
+      valid: false,
+      issues: ["Reported routing-device objective is incorrect"],
     });
   });
 
@@ -233,5 +249,121 @@ describe("solveExactProduction", () => {
       multiplicity: BigInt(1),
     });
     expect(quickwireBanks[0]?.clock.toString()).toBe("5/6");
+  });
+
+  it("breaks equal machine and group ties with fewer active routing branches", async () => {
+    const routingItems: readonly Item[] = [
+      { id: "iron-ore", name: "Iron Ore", isRaw: true, tier: 0 },
+      { id: "iron-plate", name: "Intermediate", isRaw: false, tier: 0 },
+      { id: "iron-rod", name: "Product A", isRaw: false, tier: 0 },
+      { id: "wire", name: "Product B", isRaw: false, tier: 0 },
+    ];
+    const routingRecipes: readonly Recipe[] = [
+      {
+        id: "routing-source",
+        name: "Routing Source",
+        building: "constructor",
+        durationSec: 60,
+        inputs: [{ item: "iron-ore", amount: 2 }],
+        outputs: [{ item: "iron-plate", amount: 2 }],
+        tier: 0,
+      },
+      {
+        id: "routing-consumer-a",
+        name: "Routing Consumer A",
+        building: "constructor",
+        durationSec: 60,
+        inputs: [{ item: "iron-plate", amount: 1 }],
+        outputs: [{ item: "iron-rod", amount: 2 }],
+        tier: 0,
+      },
+      {
+        id: "routing-consumer-b",
+        name: "Routing Consumer B",
+        building: "constructor",
+        durationSec: 60,
+        inputs: [{ item: "iron-plate", amount: 1 }],
+        outputs: [{ item: "wire", amount: 2 }],
+        tier: 0,
+      },
+    ];
+    const input: ExactOptimizerInput = {
+      graph: validateRecipeGraph(routingItems, routingRecipes, ["iron-ore"]),
+      rawAvailability: { "iron-ore": 2 },
+      targets: [
+        { item: "iron-rod", minimum: 0, weight: 1 },
+        { item: "wire", minimum: 0, weight: 1 },
+      ],
+      beltCapacity: 2,
+    };
+
+    const result = await solveExactProduction(input);
+    const consumerBanks = result.selectedBanks.filter((bank) =>
+      bank.recipeId.startsWith("routing-consumer"),
+    );
+
+    expect(result.proofStatus).toBe("OPTIMAL");
+    expect(result.objective).toMatchObject({
+      physicalMachines: BigInt(3),
+      groups: BigInt(3),
+      internalSplitterMergerDevices: BigInt(0),
+      routingSplitterDevices: BigInt(0),
+      totalSplitterMergerDevices: BigInt(0),
+    });
+    expect(consumerBanks).toHaveLength(1);
+    expect(consumerBanks[0]?.multiplicity).toBe(BigInt(2));
+    expect(result.targets.filter((target) => target.rate.compare(0) > 0)).toHaveLength(1);
+    expect(validateExactSolution(input, result)).toEqual({ valid: true, issues: [] });
+  });
+
+  it("counts positive consumer, target, and excess destinations exactly", async () => {
+    const routingItems: readonly Item[] = [
+      { id: "iron-ore", name: "Iron Ore", isRaw: true, tier: 0 },
+      { id: "iron-plate", name: "Intermediate", isRaw: false, tier: 0 },
+      { id: "iron-rod", name: "Product", isRaw: false, tier: 0 },
+    ];
+    const routingRecipes: readonly Recipe[] = [
+      {
+        id: "activity-source",
+        name: "Activity Source",
+        building: "constructor",
+        durationSec: 60,
+        inputs: [{ item: "iron-ore", amount: 3 }],
+        outputs: [{ item: "iron-plate", amount: 3 }],
+        tier: 0,
+      },
+      {
+        id: "activity-consumer",
+        name: "Activity Consumer",
+        building: "constructor",
+        durationSec: 60,
+        inputs: [{ item: "iron-plate", amount: 1 }],
+        outputs: [{ item: "iron-rod", amount: 1 }],
+        tier: 0,
+      },
+    ];
+    const input: ExactOptimizerInput = {
+      graph: validateRecipeGraph(routingItems, routingRecipes, ["iron-ore"]),
+      rawAvailability: { "iron-ore": 3 },
+      targets: [
+        { item: "iron-plate", minimum: 1, weight: 0 },
+        { item: "iron-rod", minimum: 1, weight: 0 },
+      ],
+      excess: [{ item: "iron-plate", floor: 1 }],
+      beltCapacity: 3,
+    };
+
+    const result = await solveExactProduction(input);
+
+    expect(result.proofStatus).toBe("OPTIMAL");
+    expect(result.targets.find((target) => target.item === "iron-plate")?.rate.toString()).toBe(
+      "1",
+    );
+    expect(result.excess.find((entry) => entry.item === "iron-plate")?.rate.toString()).toBe("1");
+    expect(result.objective).toMatchObject({
+      routingSplitterDevices: BigInt(1),
+      totalSplitterMergerDevices: BigInt(1),
+    });
+    expect(validateExactSolution(input, result)).toEqual({ valid: true, issues: [] });
   });
 });
