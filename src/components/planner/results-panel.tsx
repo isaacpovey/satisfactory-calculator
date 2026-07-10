@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { itemById } from "@/data/items";
 import type { ItemId } from "@/data/types";
+import type { ExactSolveProgress } from "@/lib/solver";
 import type { FactoryNetwork, ProductionStage, SolveResult } from "@/lib/solver/types";
 import type { ResultChanges } from "@/lib/solver/diff";
 import { emptyChanges } from "@/lib/solver/diff";
@@ -19,6 +20,8 @@ import { StageInputBelts } from "@/components/planner/stage-input-belts";
 interface ResultsPanelProps {
   result: SolveResult | null;
   computing?: boolean;
+  progress?: ExactSolveProgress | null;
+  elapsedSeconds?: number;
   stale?: boolean;
   changes?: ResultChanges;
 }
@@ -32,6 +35,14 @@ const ORE_SWATCH: Partial<Record<ItemId, string>> = {
   "raw-quartz": "bg-ore-quartz",
   sulfur: "bg-ore-sulfur",
 };
+
+function solveProgressText(progress: ExactSolveProgress, elapsedSeconds: number): string {
+  const elapsed =
+    elapsedSeconds < 60
+      ? `${elapsedSeconds}s`
+      : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
+  return `Phase ${progress.phase} of ${progress.phaseCount} · ${progress.label} · ${elapsed} elapsed`;
+}
 
 function changedRing(changed: boolean): string {
   return changed
@@ -230,6 +241,8 @@ function StageCard({
 export function ResultsPanel({
   result,
   computing = false,
+  progress = null,
+  elapsedSeconds = 0,
   stale = false,
   changes = emptyChanges(),
 }: ResultsPanelProps) {
@@ -241,7 +254,9 @@ export function ResultsPanel({
             <Loader2 className="size-8 animate-spin text-primary" />
             <p className="font-heading font-semibold">Proving the global optimum…</p>
             <p className="text-sm text-muted-foreground">
-              Checking every non-dominated clock and machine-bank pattern
+              {progress
+                ? solveProgressText(progress, elapsedSeconds)
+                : "Checking every non-dominated clock and machine-bank pattern"}
             </p>
           </>
         ) : (
@@ -275,7 +290,9 @@ export function ResultsPanel({
             <div>
               <p className="font-heading text-sm font-semibold">Computing…</p>
               <p className="text-xs text-muted-foreground">
-                Previous results stay visible while optimality is proven
+                {progress
+                  ? solveProgressText(progress, elapsedSeconds)
+                  : "Previous results stay visible while optimality is proven"}
               </p>
             </div>
           </div>

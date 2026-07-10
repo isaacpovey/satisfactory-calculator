@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
-import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import type { ExactSolveProgress } from "@/lib/solver";
 import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
 import { solveExact } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
+import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BeltTierPanel } from "./belt-tier-panel";
@@ -46,6 +47,11 @@ function buildExcessInput(floors: Partial<Record<ItemId, number>>): ExcessSpec[]
     .map(([item, rate]) => ({ item: item as ItemId, rate: rate ?? 0 }));
 }
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
 export function PlannerApp() {
   const [rawAvailable, setRawAvailable] = useState<Partial<Record<ItemId, number>>>(defaultRaws);
   const [targets, setTargets] = useState<TargetSpec[]>(defaultTargets);
@@ -56,6 +62,9 @@ export function PlannerApp() {
   const [result, setResult] = useState<SolveResult | null>(null);
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+  const [solveProgress, setSolveProgress] = useState<ExactSolveProgress | null>(null);
+  const [solveElapsedSeconds, setSolveElapsedSeconds] = useState(0);
+  const [showDetailedProgress, setShowDetailedProgress] = useState(false);
   const [solveError, setSolveError] = useState<string | null>(null);
   const [changes, setChanges] = useState(emptyChanges);
   const prevResultRef = useRef<SolveResult | null>(null);
@@ -98,16 +107,45 @@ export function PlannerApp() {
     });
   }, [hydrated, rawAvailable, targets, excessFloors, maxBeltCapacity]);
 
+  useEffect(() => {
+    if (!computing) {
+      setShowDetailedProgress(false);
+      setSolveElapsedSeconds(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    let intervalId: number | undefined;
+    const revealId = window.setTimeout(() => {
+      setShowDetailedProgress(true);
+      setSolveElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      intervalId = window.setInterval(() => {
+        setSolveElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      }, 1000);
+    }, 15_000);
+
+    return () => {
+      window.clearTimeout(revealId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
+  }, [computing]);
+
   const runCompute = useCallback((input: PlannerInput) => {
     activeSolve.current?.abort();
     const controller = new AbortController();
     activeSolve.current = controller;
     const gen = ++computeGen.current;
     setComputing(true);
+    setSolveProgress(null);
     setSolveError(null);
     setChanges(emptyChanges());
 
-    void solveExact(input, { signal: controller.signal })
+    void solveExact(input, {
+      signal: controller.signal,
+      onProgress: (progress) => {
+        if (gen === computeGen.current) setSolveProgress(progress);
+      },
+    })
       .then((next) => {
         if (gen !== computeGen.current) return;
         if (next.proofStatus === "CANCELLED") {
@@ -135,6 +173,7 @@ export function PlannerApp() {
     activeSolve.current = null;
     computeGen.current++;
     setComputing(false);
+    setSolveProgress(null);
     setSolveError("Solve cancelled before optimality was proven.");
   }, []);
 
@@ -218,7 +257,9 @@ export function PlannerApp() {
             ) : (
               <p className="text-xs text-muted-foreground">
                 {computing
-                  ? "Proving the global optimum…"
+                  ? showDetailedProgress && solveProgress
+                    ? `Phase ${solveProgress.phase} of ${solveProgress.phaseCount}: ${solveProgress.label} · ${formatElapsed(solveElapsedSeconds)} elapsed`
+                    : "Proving the global optimum…"
                   : result
                     ? "Results match current inputs"
                     : "Ready to compute"}
@@ -252,6 +293,8 @@ export function PlannerApp() {
           <ResultsPanel
             result={result}
             computing={computing}
+            progress={showDetailedProgress ? solveProgress : null}
+            elapsedSeconds={showDetailedProgress ? solveElapsedSeconds : undefined}
             stale={dirty && !computing}
             changes={changes}
           />

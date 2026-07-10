@@ -10,8 +10,12 @@ import {
   type ExactMachineBankPattern,
 } from "./bank-patterns";
 import { computeRecipeBounds } from "./bounds";
-import { solveExactProduction } from "./optimizer";
-import type { ExactObjectiveVector, ExactOptimizerInput } from "./optimizer-types";
+import { selectSearchWorkers, solveExactProduction } from "./optimizer";
+import type {
+  ExactObjectiveVector,
+  ExactOptimizerInput,
+  ExactSolveProgress,
+} from "./optimizer-types";
 import { Rational } from "./rational";
 import { validateRecipeGraph } from "./recipe-graph";
 import { validateExactSolution } from "./validation";
@@ -213,6 +217,51 @@ function bruteForceTiny(input: ExactOptimizerInput): ExactObjectiveVector {
 }
 
 describe("solveExactProduction", () => {
+  it("selects a bounded worker count while reserving a browser core", () => {
+    expect(selectSearchWorkers(undefined, Number.NaN)).toBe(1);
+    expect(selectSearchWorkers(undefined, 2)).toBe(1);
+    expect(selectSearchWorkers(undefined, 4)).toBe(3);
+    expect(selectSearchWorkers(undefined, 12)).toBe(8);
+    expect(selectSearchWorkers(4, 12)).toBe(4);
+    expect(selectSearchWorkers(99, 12)).toBe(8);
+    expect(selectSearchWorkers(0, 12)).toBe(1);
+    expect(selectSearchWorkers(Number.NaN, 12)).toBe(1);
+  });
+
+  it("reports all six exact objective phases", async () => {
+    const progress: ExactSolveProgress[] = [];
+    const result = await solveExactProduction(
+      tinyInput({
+        searchWorkers: 1,
+        onProgress: (update) => progress.push(update),
+      }),
+    );
+
+    expect(result.proofStatus).toBe("OPTIMAL");
+    expect(progress.filter((update) => update.status === "solving")).toEqual([
+      { phase: 1, phaseCount: 6, label: "scarce raw use", status: "solving" },
+      { phase: 2, phaseCount: 6, label: "weighted target output", status: "solving" },
+      { phase: 3, phaseCount: 6, label: "physical machines", status: "solving" },
+      { phase: 4, phaseCount: 6, label: "groups", status: "solving" },
+      {
+        phase: 5,
+        phaseCount: 6,
+        label: "total splitter and merger devices",
+        status: "solving",
+      },
+      { phase: 6, phaseCount: 6, label: "stable bank order", status: "solving" },
+    ]);
+    expect(progress.filter((update) => update.status === "complete")).toHaveLength(6);
+  });
+
+  it("returns the same exact result across repeated parallel solves", async () => {
+    const first = await solveExactProduction(tinyInput({ searchWorkers: 4 }));
+    const second = await solveExactProduction(tinyInput({ searchWorkers: 4 }));
+
+    expect(first.proofStatus).toBe("OPTIMAL");
+    expect(second).toEqual(first);
+  });
+
   it("matches brute force across the complete objective hierarchy", async () => {
     const input = tinyInput();
     const result = await solveExactProduction(input);

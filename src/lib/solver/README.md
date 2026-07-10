@@ -285,7 +285,10 @@ browser inputs practical:
 - Dominated bank patterns and interchangeable multiplicities are removed.
 - Physical bank domains are tightened after the machine-count optimum is known.
 - Each solved phase supplies a complete or canonical solution hint to the next phase.
-- The CP-SAT random seed and stable final objective make output deterministic.
+- CP-SAT uses all but one reported logical core, capped at eight workers; callers can override the
+  worker count for benchmarks and constrained devices.
+- The fixed CP-SAT random seed and stable final objective keep equivalent output repeatable across
+  parallel solves.
 
 These measures change search order and remove symmetry only; they do not turn the optimizer into a
 hill climber or impose an iteration cap.
@@ -329,7 +332,8 @@ display network is therefore a projection of the same optimized variables, not a
 
 `or-tools-wasm` runs CP-SAT through its browser Worker bridge. The React UI awaits `solveExact`
 without blocking rendering and uses an `AbortSignal` for cancellation. `cancelExactSolve()` forwards
-the request to the active CP-SAT worker.
+the request to the active CP-SAT worker. The six objective phases emit progress events; the planner
+shows the active phase and elapsed time when a solve lasts longer than 15 seconds.
 
 The threaded WebAssembly runtime requires:
 
