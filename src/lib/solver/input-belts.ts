@@ -1,9 +1,6 @@
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import { itemById } from "@/data/items";
-import {
-  getRecipeForProduct,
-  recipes as allRecipes,
-} from "@/data/recipes";
+import { getRecipeForProduct, recipes as allRecipes } from "@/data/recipes";
 import type { ItemId, Recipe } from "@/data/types";
 import {
   friendlyRatio,
@@ -12,12 +9,7 @@ import {
   splitStepsForRatio,
 } from "./constraints";
 import { groupInputRates } from "./group-inputs";
-import type {
-  MachineGroupPlan,
-  SplitPlan,
-  StageInputBelt,
-  StageInputBeltFeed,
-} from "./types";
+import type { MachineGroupPlan, SplitPlan, StageInputBelt, StageInputBeltFeed } from "./types";
 
 const EPS = 1e-9;
 
@@ -158,7 +150,7 @@ export function packInputBeltsForItem(
     if (take < 1) take = 1;
 
     const chosen: Slot[] = [];
-    for (let i = 0; i < slots.length && chosen.length < take; ) {
+    for (let i = 0; i < slots.length && chosen.length < take;) {
       if (Math.abs(slots[i]!.rate - rate) <= EPS) {
         chosen.push(slots[i]!);
         slots.splice(i, 1);
@@ -179,9 +171,7 @@ export function packInputBeltsForItem(
   }
 
   belts.sort(
-    (a, b) =>
-      (a.feeds[0]?.bankIndex ?? 0) - (b.feeds[0]?.bankIndex ?? 0) ||
-      b.rate - a.rate,
+    (a, b) => (a.feeds[0]?.bankIndex ?? 0) - (b.feeds[0]?.bankIndex ?? 0) || b.rate - a.rate,
   );
   return belts;
 }
@@ -198,23 +188,19 @@ export function packSharedMachineSlots(
   maxBelt: number,
 ): StageInputBelt[] {
   const from = sourceForItem(item);
-  const remaining = [...slots].sort(
-    (a, b) => b.rate - a.rate || a.bankIndex - b.bankIndex,
-  );
+  const remaining = [...slots].sort((a, b) => b.rate - a.rate || a.bankIndex - b.bankIndex);
   const belts: StageInputBelt[] = [];
 
   while (remaining.length > 0) {
     const rate = remaining[0]!.rate;
-    const sameCount = remaining.filter(
-      (s) => Math.abs(s.rate - rate) <= EPS,
-    ).length;
+    const sameCount = remaining.filter((s) => Math.abs(s.rate - rate) <= EPS).length;
     const maxOnBelt = Math.max(1, Math.floor(maxBelt / rate + EPS));
     let take = Math.min(sameCount, maxOnBelt);
     while (take > 1 && !isSplitterFriendlyCount(take)) take--;
     if (take < 1) take = 1;
 
     const chosen: Slot[] = [];
-    for (let i = 0; i < remaining.length && chosen.length < take; ) {
+    for (let i = 0; i < remaining.length && chosen.length < take;) {
       if (Math.abs(remaining[i]!.rate - rate) <= EPS) {
         chosen.push(remaining[i]!);
         remaining.splice(i, 1);
@@ -249,9 +235,7 @@ export function buildStageInputBelts(
       const rates = groupInputRates(recipe.id, group);
       const row = rates.find((r) => r.item === input.item);
       const total = row?.totalRate ?? 0;
-      const per =
-        row?.perMachineRate ??
-        (group.machines > 0 ? total / group.machines : 0);
+      const per = row?.perMachineRate ?? (group.machines > 0 ? total / group.machines : 0);
       return {
         bankIndex,
         rate: total,
@@ -259,9 +243,7 @@ export function buildStageInputBelts(
         perMachine: per,
       };
     });
-    belts.push(
-      ...packInputBeltsForItem(input.item, demands, maxBeltCapacity),
-    );
+    belts.push(...packInputBeltsForItem(input.item, demands, maxBeltCapacity));
   }
 
   return belts;

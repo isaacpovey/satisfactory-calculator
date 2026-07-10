@@ -3,25 +3,13 @@
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { itemById } from "@/data/items";
-import { recipes as allRecipes } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
-import type {
-  FlowEdge,
-  FactoryNetwork,
-  ProductionStage,
-  SolveResult,
-} from "@/lib/solver/types";
+import type { FactoryNetwork, ProductionStage, SolveResult } from "@/lib/solver/types";
 import type { ResultChanges } from "@/lib/solver/diff";
 import { emptyChanges } from "@/lib/solver/diff";
-import {
-  formatPercent,
-  formatRate,
-} from "@/lib/solver/format";
+import { formatPercent, formatRate } from "@/lib/solver/format";
 import { cn } from "@/lib/utils";
-import {
-  FlowEndpointLink,
-  ItemFlowLink,
-} from "@/components/planner/flow-endpoint-link";
+import { FlowEndpointLink, ItemFlowLink } from "@/components/planner/flow-endpoint-link";
 import { MergePlanDisplay } from "@/components/planner/merge-plan-display";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
 import { MachineGroupCard } from "@/components/planner/machine-group-card";
@@ -35,10 +23,6 @@ interface ResultsPanelProps {
   changes?: ResultChanges;
 }
 
-const recipeNameById = Object.fromEntries(
-  allRecipes.map((r) => [r.id, r.name]),
-) as Record<string, string>;
-
 const ORE_SWATCH: Partial<Record<ItemId, string>> = {
   "iron-ore": "bg-ore-iron",
   "copper-ore": "bg-ore-copper",
@@ -48,25 +32,6 @@ const ORE_SWATCH: Partial<Record<ItemId, string>> = {
   "raw-quartz": "bg-ore-quartz",
   sulfur: "bg-ore-sulfur",
 };
-
-function utilTone(u: number): string {
-  if (u >= 0.9) return "bg-util-high";
-  if (u >= 0.55) return "bg-util-mid";
-  return "bg-util-low";
-}
-
-function formatEndpoint(kind: string, id: string): string {
-  if (kind === "raw" || kind === "target" || kind === "excess") {
-    const name = itemById[id as keyof typeof itemById]?.name ?? id;
-    if (kind === "target") return `Target · ${name}`;
-    if (kind === "excess") return `Excess · ${name}`;
-    return name;
-  }
-  if (kind === "recipe" || kind === "stage") {
-    return recipeNameById[id] ?? id;
-  }
-  return id;
-}
 
 function changedRing(changed: boolean): string {
   return changed
@@ -89,12 +54,8 @@ function Section({
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="font-heading text-lg font-semibold tracking-tight">
-            {title}
-          </h2>
-          {hint ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>
-          ) : null}
+          <h2 className="font-heading text-lg font-semibold tracking-tight">{title}</h2>
+          {hint ? <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p> : null}
         </div>
         {action}
       </div>
@@ -131,10 +92,7 @@ function UtilMeter({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={cn(
-              "size-2.5 shrink-0 rounded-full",
-              swatch ?? "bg-primary",
-            )}
+            className={cn("size-2.5 shrink-0 rounded-full", swatch ?? "bg-primary")}
             aria-hidden
           />
           <span className="truncate font-medium">{name}</span>
@@ -148,22 +106,13 @@ function UtilMeter({
           {formatPercent(utilization)}
         </span>
       </div>
-      <div
-        className="h-2.5 overflow-hidden rounded-full bg-muted"
-        role="meter"
-        aria-valuenow={Math.round(pct)}
-        aria-valuemin={0}
-        aria-valuemax={100}
+      <meter
+        className="h-2.5 w-full overflow-hidden rounded-full bg-muted accent-primary"
+        value={pct}
+        min={0}
+        max={100}
         aria-label={`${name} utilization`}
-      >
-        <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-500 ease-out",
-            utilTone(utilization),
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      />
       <p className="text-xs tabular-nums text-muted-foreground">
         {formatRate(used)} / {formatRate(available)}
         {leftover > 1e-6 ? ` · ${formatRate(leftover)} left` : ""}
@@ -198,9 +147,7 @@ function StageCard({
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/12 via-secondary/50 to-accent/25 px-4 py-3">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-heading text-base font-semibold">
-              {stage.recipeName}
-            </h3>
+            <h3 className="font-heading text-base font-semibold">{stage.recipeName}</h3>
             {stageChanged ? (
               <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                 updated
@@ -215,17 +162,12 @@ function StageCard({
         </div>
         <p className="font-heading text-lg font-bold tabular-nums text-primary">
           {formatRate(stage.outputPerMinute)}
-          <span className="ml-0.5 text-xs font-medium text-muted-foreground">
-            /min
-          </span>
+          <span className="ml-0.5 text-xs font-medium text-muted-foreground">/min</span>
         </p>
       </header>
 
       <div className="flex flex-col gap-6 p-4 sm:p-5">
-        <StageInputBelts
-          belts={stage.inputBelts}
-          maxBeltCapacity={maxBeltCapacity}
-        />
+        <StageInputBelts belts={stage.inputBelts} maxBeltCapacity={maxBeltCapacity} />
 
         <div className="flex flex-col gap-3">
           <div>
@@ -257,8 +199,8 @@ function StageCard({
                 Output belts
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Per-destination belts from dedicated machine banks; mergers
-                only combine banks feeding the same destination
+                Per-destination belts from dedicated machine banks; mergers only combine banks
+                feeding the same destination
               </p>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
@@ -343,9 +285,7 @@ export function ResultsPanel({
 
       {stale && !computing ? (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-primary/10 px-4 py-2.5 text-sm ring-1 ring-primary/25">
-          <p className="font-medium text-primary">
-            Inputs changed — results are stale
-          </p>
+          <p className="font-medium text-primary">Inputs changed — results are stale</p>
           <p className="text-xs text-muted-foreground">Press Compute plan</p>
         </div>
       ) : null}
@@ -367,8 +307,7 @@ export function ResultsPanel({
             <ul className="mt-2 space-y-1 text-destructive/90">
               {shortfalls.map((r) => (
                 <li key={r.item} className="tabular-nums">
-                  {itemById[r.item].name}: need{" "}
-                  {formatRate(r.available + r.shortfall)}/min, have{" "}
+                  {itemById[r.item].name}: need {formatRate(r.available + r.shortfall)}/min, have{" "}
                   {formatRate(r.available)}/min
                 </li>
               ))}
@@ -425,9 +364,7 @@ export function ResultsPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <p className="font-heading font-semibold">
-                        {itemById[t.item].name}
-                      </p>
+                      <p className="font-heading font-semibold">{itemById[t.item].name}</p>
                       {changes.targets.has(t.item) ? (
                         <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                           updated
@@ -436,9 +373,7 @@ export function ResultsPanel({
                     </div>
                     <p className="font-heading text-xl font-bold tabular-nums text-primary">
                       {formatRate(t.totalRate)}
-                      <span className="ml-0.5 text-xs font-medium text-muted-foreground">
-                        /min
-                      </span>
+                      <span className="ml-0.5 text-xs font-medium text-muted-foreground">/min</span>
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs tabular-nums text-muted-foreground">
@@ -457,44 +392,40 @@ export function ResultsPanel({
           )}
         </Section>
 
-        <Section
-          title="Production stages"
-          hint="Machine banks and where each belt goes"
-        >
+        <Section title="Production stages" hint="Machine banks and where each belt goes">
           {network.stages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No production required yet.
-            </p>
+            <p className="text-sm text-muted-foreground">No production required yet.</p>
           ) : (
             <div className="flex flex-col gap-6">
-              {(network.chains.length > 1 ? network.chains : [{ id: "all", label: "", stageIds: network.stages.map((s) => s.recipeId) }]).map(
-                (chain) => {
-                  const chainStages = chain.stageIds
-                    .map((id) => network.stages.find((s) => s.recipeId === id))
-                    .filter((s): s is ProductionStage => s !== undefined);
+              {(network.chains.length > 1
+                ? network.chains
+                : [{ id: "all", label: "", stageIds: network.stages.map((s) => s.recipeId) }]
+              ).map((chain) => {
+                const chainStages = chain.stageIds
+                  .map((id) => network.stages.find((s) => s.recipeId === id))
+                  .filter((s): s is ProductionStage => s !== undefined);
 
-                  return (
-                    <div key={chain.id} className="flex flex-col gap-3">
-                      {network.chains.length > 1 && chain.label ? (
-                        <h3 className="font-heading text-sm font-semibold text-muted-foreground">
-                          {chain.label}
-                        </h3>
-                      ) : null}
-                      <div className="flex flex-col gap-4">
-                        {chainStages.map((stage) => (
-                          <StageCard
-                            key={stage.recipeId}
-                            stage={stage}
-                            network={network}
-                            stageChanged={changes.stages.has(stage.recipeId)}
-                            maxBeltCapacity={result.maxBeltCapacity}
-                          />
-                        ))}
-                      </div>
+                return (
+                  <div key={chain.id} className="flex flex-col gap-3">
+                    {network.chains.length > 1 && chain.label ? (
+                      <h3 className="font-heading text-sm font-semibold text-muted-foreground">
+                        {chain.label}
+                      </h3>
+                    ) : null}
+                    <div className="flex flex-col gap-4">
+                      {chainStages.map((stage) => (
+                        <StageCard
+                          key={stage.recipeId}
+                          stage={stage}
+                          network={network}
+                          stageChanged={changes.stages.has(stage.recipeId)}
+                          maxBeltCapacity={result.maxBeltCapacity}
+                        />
+                      ))}
                     </div>
-                  );
-                },
-              )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>
@@ -529,11 +460,7 @@ export function ResultsPanel({
                       <span className="mx-1.5 text-muted-foreground">→</span>
                       <FlowEndpointLink kind="recipe" id={edge.to.id} />
                     </p>
-                    <SplitterPlanDisplay
-                      plan={edge.outputSplit}
-                      variant="output"
-                      embedded
-                    />
+                    <SplitterPlanDisplay plan={edge.outputSplit} variant="output" embedded />
                   </div>
                   <span className="shrink-0 text-sm font-semibold tabular-nums">
                     {formatRate(edge.rate)}
@@ -576,9 +503,7 @@ export function ResultsPanel({
                   </p>
                   <p className="text-xs tabular-nums text-muted-foreground">
                     {formatRate(e.rate)}/min
-                    {e.autoRate > 1e-6
-                      ? ` · auto +${formatRate(e.autoRate)}`
-                      : ""}
+                    {e.autoRate > 1e-6 ? ` · auto +${formatRate(e.autoRate)}` : ""}
                   </p>
                 </div>
               ))}
@@ -605,17 +530,13 @@ export function ResultsPanel({
                     key={row.item}
                     className={cn(
                       "flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm",
-                      changes.items.has(row.item) &&
-                        "rounded-md bg-primary/[0.06] px-2 -mx-2",
+                      changes.items.has(row.item) && "rounded-md bg-primary/[0.06] px-2 -mx-2",
                     )}
                   >
-                    <span className="font-medium">
-                      {itemById[row.item]?.name ?? row.item}
-                    </span>
+                    <span className="font-medium">{itemById[row.item]?.name ?? row.item}</span>
                     <span className="tabular-nums text-muted-foreground">
                       +{formatRate(row.produced)}
-                      <span className="mx-1 opacity-50">/</span>−
-                      {formatRate(row.consumed)}
+                      <span className="mx-1 opacity-50">/</span>−{formatRate(row.consumed)}
                       <span className="ml-2 font-medium text-foreground">
                         net {formatRate(row.net)}
                       </span>

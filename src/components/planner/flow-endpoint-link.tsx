@@ -71,8 +71,7 @@ interface FlowEndpointLinkProps {
 }
 
 const linkStyles = {
-  default:
-    "text-primary underline-offset-2 hover:underline focus-visible:underline",
+  default: "text-primary underline-offset-2 hover:underline focus-visible:underline",
   embedded:
     "text-inherit underline decoration-foreground/35 underline-offset-2 hover:decoration-foreground focus-visible:decoration-foreground",
 } as const;
@@ -91,10 +90,7 @@ export function FlowEndpointLink({
   return (
     <a
       href={href}
-      className={cn(
-        embedded ? linkStyles.embedded : linkStyles.default,
-        className,
-      )}
+      className={cn(embedded ? linkStyles.embedded : linkStyles.default, className)}
       onClick={(e) => {
         e.preventDefault();
         scrollToAnchor(href);
@@ -112,12 +108,7 @@ interface ItemFlowLinkProps {
   embedded?: boolean;
 }
 
-export function ItemFlowLink({
-  itemId,
-  className,
-  children,
-  embedded = false,
-}: ItemFlowLinkProps) {
+export function ItemFlowLink({ itemId, className, children, embedded = false }: ItemFlowLinkProps) {
   const href = anchorForItem(itemId);
   const name = itemById[itemId]?.name ?? itemId;
 
@@ -128,10 +119,7 @@ export function ItemFlowLink({
   return (
     <a
       href={href}
-      className={cn(
-        embedded ? linkStyles.embedded : linkStyles.default,
-        className,
-      )}
+      className={cn(embedded ? linkStyles.embedded : linkStyles.default, className)}
       onClick={(e) => {
         e.preventDefault();
         scrollToAnchor(href);

@@ -1,7 +1,4 @@
-import {
-  clampMaxBeltCapacity,
-  DEFAULT_MAX_BELT_CAPACITY,
-} from "@/data/belts";
+import { clampMaxBeltCapacity, DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import { itemById, manufacturedItemIds, scarceRawIds } from "@/data/items";
 import {
   getRecipeForProduct,
@@ -9,16 +6,8 @@ import {
   recipePrimaryOutputPerMinute,
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
-import {
-  addRate,
-  exactRawCoefficients,
-  expandFactoryPlan,
-  type RateMap,
-} from "./bom";
-import {
-  ALLOWED_CLOCKS,
-  complexityScore,
-} from "./constraints";
+import { addRate, exactRawCoefficients, expandFactoryPlan, type RateMap } from "./bom";
+import { ALLOWED_CLOCKS, complexityScore } from "./constraints";
 import { buildFactoryNetwork } from "./network";
 import { quantizeItemRateBeltAware } from "./pack-banks";
 import { optimizeSinkRates } from "./optimize-sinks";
@@ -59,9 +48,7 @@ function expandSinks(
 }
 
 /** Ingot items/min produced but not consumed by the expanded plan. */
-function leftoverIngotsFromCrafts(
-  recipeCrafts: Map<string, number>,
-): RateMap {
+function leftoverIngotsFromCrafts(recipeCrafts: Map<string, number>): RateMap {
   const produced: RateMap = new Map();
   const consumed: RateMap = new Map();
   for (const recipe of allRecipes) {
@@ -91,8 +78,7 @@ function leftoverIngotsFromPlan(
   maxBeltCapacity: number,
   recipeCrafts?: Map<string, number>,
 ): RateMap {
-  const crafts =
-    recipeCrafts ?? expandSinks(sinks, maxBeltCapacity).recipeCrafts;
+  const crafts = recipeCrafts ?? expandSinks(sinks, maxBeltCapacity).recipeCrafts;
   return leftoverIngotsFromCrafts(crafts);
 }
 
@@ -116,10 +102,7 @@ function leftoverFromPlan(
   const { raws } = expandSinks(sinks, maxBeltCapacity);
   const leftover = emptyRawMap();
   for (const id of scarceRawIds) {
-    leftover.set(
-      id,
-      Math.max(0, (available.get(id) ?? 0) - (raws.get(id) ?? 0)),
-    );
+    leftover.set(id, Math.max(0, (available.get(id) ?? 0) - (raws.get(id) ?? 0)));
   }
   return leftover;
 }
@@ -223,10 +206,7 @@ function collectIngotConversionRates(
 
   const rates = new Set<number>();
   const minClock = Math.min(...ALLOWED_CLOCKS);
-  const maxMachines = Math.max(
-    1,
-    Math.min(24, Math.ceil(tryMax / (base * minClock) + EPS)),
-  );
+  const maxMachines = Math.max(1, Math.min(24, Math.ceil(tryMax / (base * minClock) + EPS)));
   for (let machines = 1; machines <= maxMachines; machines++) {
     for (const clock of ALLOWED_CLOCKS) {
       const rate = machines * clock * base;
@@ -236,11 +216,7 @@ function collectIngotConversionRates(
   return [...rates].sort((a, b) => a - b);
 }
 
-function collectGrowthRates(
-  itemId: ItemId,
-  current: number,
-  leftover: RateMap,
-): number[] {
+function collectGrowthRates(itemId: ItemId, current: number, leftover: RateMap): number[] {
   const recipe = getRecipeForProduct(itemId);
   if (!recipe) return [];
   const base = recipePrimaryOutputPerMinute(recipe);
@@ -258,10 +234,7 @@ function collectGrowthRates(
   // Continuous leftover plus one full machine of headroom for quantization.
   const tryMax = current + maxAdditional + base;
   const minClock = Math.min(...ALLOWED_CLOCKS);
-  const maxMachines = Math.max(
-    1,
-    Math.min(48, Math.ceil(tryMax / (base * minClock) + EPS)),
-  );
+  const maxMachines = Math.max(1, Math.min(48, Math.ceil(tryMax / (base * minClock) + EPS)));
 
   const rates = new Set<number>();
   // Multi-group achievable rates: enumerate effective machines via groups
@@ -326,9 +299,7 @@ function buildItemFlows(
   }
 
   flows.sort((a, b) =>
-    (itemById[a.item]?.name ?? a.item).localeCompare(
-      itemById[b.item]?.name ?? b.item,
-    ),
+    (itemById[a.item]?.name ?? a.item).localeCompare(itemById[b.item]?.name ?? b.item),
   );
   return flows;
 }
@@ -340,14 +311,11 @@ function buildRecipeUsagesFromNetwork(
   for (const stage of network.stages) {
     const cyclesPerMachine =
       stage.groups[0] != null && stage.groups[0].effectiveMachines > EPS
-        ? stage.outputPerMinute /
-          stage.groups.reduce((s, g) => s + g.effectiveMachines, 0)
+        ? stage.outputPerMinute / stage.groups.reduce((s, g) => s + g.effectiveMachines, 0)
         : 0;
     stage.groups.forEach((g, groupIndex) => {
       const groupCrafts =
-        cyclesPerMachine > EPS
-          ? g.effectiveMachines * cyclesPerMachine
-          : g.outputPerMinute;
+        cyclesPerMachine > EPS ? g.effectiveMachines * cyclesPerMachine : g.outputPerMinute;
       usages.push({
         recipeId: stage.recipeId,
         recipeName: stage.recipeName,
@@ -362,10 +330,7 @@ function buildRecipeUsagesFromNetwork(
       });
     });
   }
-  usages.sort(
-    (a, b) =>
-      a.recipeName.localeCompare(b.recipeName) || a.groupIndex - b.groupIndex,
-  );
+  usages.sort((a, b) => a.recipeName.localeCompare(b.recipeName) || a.groupIndex - b.groupIndex);
   return usages;
 }
 
@@ -388,11 +353,7 @@ function rawsLockedInLeftoverIngots(
   maxBeltCapacity: number,
   recipeCrafts?: Map<string, number>,
 ): RateMap {
-  const leftoverIngots = leftoverIngotsFromPlan(
-    sinks,
-    maxBeltCapacity,
-    recipeCrafts,
-  );
+  const leftoverIngots = leftoverIngotsFromPlan(sinks, maxBeltCapacity, recipeCrafts);
   const locked = emptyRawMap();
   for (const [ingot, rate] of leftoverIngots) {
     if (rate <= EPS) continue;
@@ -411,12 +372,9 @@ function rawsLockedInLeftoverIngots(
  * auto excess toward 100% utilization.
  */
 export function solve(input: PlannerInput): SolveResult {
-  const maxBeltCapacity = clampMaxBeltCapacity(
-    input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
-  );
+  const maxBeltCapacity = clampMaxBeltCapacity(input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY);
   const targets = input.targets.filter(
-    (t) =>
-      !isIngotItem(t.item) && (t.minRate > EPS || t.weight > EPS),
+    (t) => !isIngotItem(t.item) && (t.minRate > EPS || t.weight > EPS),
   );
 
   const userExcess = new Map<ItemId, number>();
@@ -529,13 +487,8 @@ export function solve(input: PlannerInput): SolveResult {
   };
 
   // Phase B — target leftover growth; Phase C — excess soak + ingot conversion.
-  const chainRoots = [
-    ...targets.map((t) => t.item),
-    ...userExcess.keys(),
-  ];
-  const intermediates = collectChainIntermediates(chainRoots).filter(
-    (id) => !isIngotItem(id),
-  );
+  const chainRoots = [...targets.map((t) => t.item), ...userExcess.keys()];
+  const intermediates = collectChainIntermediates(chainRoots).filter((id) => !isIngotItem(id));
 
   const soakCandidates = new Set<ItemId>(intermediates);
   for (const id of manufacturedItemIds) {
@@ -547,9 +500,7 @@ export function solve(input: PlannerInput): SolveResult {
     soakCandidates.add(id);
   }
 
-  const fillOrder = [...soakCandidates].sort(
-    (a, b) => complexityScore(b) - complexityScore(a),
-  );
+  const fillOrder = [...soakCandidates].sort((a, b) => complexityScore(b) - complexityScore(a));
 
   const optimizerDeps = {
     available,
@@ -593,15 +544,12 @@ export function solve(input: PlannerInput): SolveResult {
   }
 
   // Drop any ingot excess that reconcile/soak may have introduced.
-  for (const id of [...excessRates.keys()]) {
+  for (const id of excessRates.keys()) {
     if (isIngotItem(id)) excessRates.delete(id);
   }
 
   const final = expandSinks(buildSinks(), maxBeltCapacity);
-  const unusedIngotRaws = rawsLockedInLeftoverIngots(
-    buildSinks(),
-    maxBeltCapacity,
-  );
+  const unusedIngotRaws = rawsLockedInLeftoverIngots(buildSinks(), maxBeltCapacity);
 
   const finalRaws: RawUtilization[] = scarceRawIds.map((item) => {
     const avail = available.get(item) ?? 0;
@@ -652,9 +600,7 @@ export function solve(input: PlannerInput): SolveResult {
     .sort(
       (a, b) =>
         complexityScore(b.item) - complexityScore(a.item) ||
-        (itemById[a.item]?.name ?? "").localeCompare(
-          itemById[b.item]?.name ?? "",
-        ),
+        (itemById[a.item]?.name ?? "").localeCompare(itemById[b.item]?.name ?? ""),
     );
 
   const endRates = new Map<ItemId, number>();

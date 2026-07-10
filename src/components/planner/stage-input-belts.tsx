@@ -1,17 +1,16 @@
 import { beltTierForRate } from "@/data/belts";
 import { itemById } from "@/data/items";
 import type { ItemId } from "@/data/types";
-import {
-  FlowEndpointLink,
-  ItemFlowLink,
-} from "@/components/planner/flow-endpoint-link";
+import { FlowEndpointLink, ItemFlowLink } from "@/components/planner/flow-endpoint-link";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
 import { formatRate } from "@/lib/solver/format";
 import type { StageInputBelt } from "@/lib/solver/types";
 
-function formatSource(
-  from: StageInputBelt["from"],
-): { kind: "raw" | "stage"; id: string; label?: string } {
+function formatSource(from: StageInputBelt["from"]): {
+  kind: "raw" | "stage";
+  id: string;
+  label?: string;
+} {
   if (from.kind === "raw") {
     return { kind: "raw", id: from.id };
   }
@@ -23,10 +22,7 @@ interface StageInputBeltsProps {
   maxBeltCapacity: number;
 }
 
-export function StageInputBelts({
-  belts,
-  maxBeltCapacity,
-}: StageInputBeltsProps) {
+export function StageInputBelts({ belts, maxBeltCapacity }: StageInputBeltsProps) {
   if (belts.length === 0) return null;
 
   // Group by item for a short summary line
@@ -71,27 +67,18 @@ export function StageInputBelts({
                 </div>
                 <p className="font-heading text-base font-semibold tabular-nums">
                   {formatRate(belt.rate)}
-                  <span className="ml-0.5 text-xs font-normal text-muted-foreground">
-                    /min
-                  </span>
+                  <span className="ml-0.5 text-xs font-normal text-muted-foreground">/min</span>
                 </p>
               </header>
 
               <p className="text-[11px] text-muted-foreground">
-                from{" "}
-                <FlowEndpointLink
-                  kind={src.kind}
-                  id={src.id}
-                  label={src.label}
-                />
+                from <FlowEndpointLink kind={src.kind} id={src.id} label={src.label} />
               </p>
 
               {!belt.split.mergeOnly ? (
                 <SplitterPlanDisplay plan={belt.split} variant="output" />
               ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Entire belt to bank
-                </p>
+                <p className="text-[11px] text-muted-foreground">Entire belt to bank</p>
               )}
 
               <ul className="flex flex-col gap-1.5">

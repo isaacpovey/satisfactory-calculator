@@ -28,10 +28,7 @@ function near(a: number, b: number): boolean {
 }
 
 /** Diff two solve results for UI highlight. `prev === null` → no highlights. */
-export function diffSolveResults(
-  prev: SolveResult | null,
-  next: SolveResult,
-): ResultChanges {
+export function diffSolveResults(prev: SolveResult | null, next: SolveResult): ResultChanges {
   if (!prev) return emptyChanges();
 
   const changes = emptyChanges();

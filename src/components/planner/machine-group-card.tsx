@@ -3,10 +3,7 @@ import type { ItemId } from "@/data/types";
 import { InputSplitVisual } from "@/components/planner/belt-flow-visual";
 import { ItemFlowLink } from "@/components/planner/flow-endpoint-link";
 import { formatClock, type AllowedClock } from "@/lib/solver/constraints";
-import {
-  groupInputRates,
-  splitterInputStageRates,
-} from "@/lib/solver/group-inputs";
+import { groupInputRates, splitterInputStageRates } from "@/lib/solver/group-inputs";
 import { formatMachines, formatRate } from "@/lib/solver/format";
 import type { MachineGroupPlan, StageInputBelt } from "@/lib/solver/types";
 
@@ -55,9 +52,7 @@ export function MachineGroupCard({
           </p>
           <p className="font-heading text-base font-semibold tabular-nums">
             {formatRate(group.outputPerMinute)}
-            <span className="ml-0.5 text-xs font-normal text-muted-foreground">
-              /min
-            </span>
+            <span className="ml-0.5 text-xs font-normal text-muted-foreground">/min</span>
           </p>
         </div>
       </header>
@@ -73,16 +68,11 @@ export function MachineGroupCard({
       {inputs.length > 0 ? (
         <div className="flex flex-col gap-4">
           {inputs.map((input) => {
-            const stages = splitterInputStageRates(
-              input.totalRate,
-              group.inputSplit,
-            );
+            const stages = splitterInputStageRates(input.totalRate, group.inputSplit);
             return (
               <div key={input.item} className="flex flex-col gap-2.5">
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-[11px] text-muted-foreground">
-                    Manifold
-                  </span>
+                  <span className="text-[11px] text-muted-foreground">Manifold</span>
                   <ItemFlowLink itemId={input.item as ItemId} embedded />
                 </div>
                 <InputSplitVisual

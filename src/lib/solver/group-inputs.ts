@@ -33,10 +33,7 @@ const recipeById = Object.fromEntries(allRecipes.map((r) => [r.id, r])) as Recor
 >;
 
 /** Input item rates for one machine group at its clock. */
-export function groupInputRates(
-  recipeId: string,
-  group: MachineGroupPlan,
-): GroupInputRate[] {
+export function groupInputRates(recipeId: string, group: MachineGroupPlan): GroupInputRate[] {
   const recipe = recipeById[recipeId];
   if (!recipe) return [];
   const cyclesPerMin = recipeCyclesPerMinute(recipe);
@@ -51,19 +48,14 @@ export function groupInputRates(
  * Belt flow at each splitter stage when feeding a machine group equally.
  * Rates are per lane after each nested 1/2 or 1/3 split.
  */
-export function splitterInputStageRates(
-  totalRate: number,
-  plan: SplitPlan,
-): SplitterStageRate[] {
+export function splitterInputStageRates(totalRate: number, plan: SplitPlan): SplitterStageRate[] {
   if (totalRate <= 0) return [];
 
   if (plan.mergeOnly || plan.steps.length === 0) {
     return [{ label: "Belt in", rate: totalRate, lanes: 1 }];
   }
 
-  const stages: SplitterStageRate[] = [
-    { label: "Belt in", rate: totalRate, lanes: 1 },
-  ];
+  const stages: SplitterStageRate[] = [{ label: "Belt in", rate: totalRate, lanes: 1 }];
   let rate = totalRate;
   let lanes = 1;
   for (const step of plan.steps) {

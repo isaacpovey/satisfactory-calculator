@@ -43,28 +43,19 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
     <section className="flex flex-col gap-3 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
       <div>
         <h2 className="font-heading text-base font-semibold">End products</h2>
-        <p className="text-sm text-muted-foreground">
-          Minimums, then leftover balance weight
-        </p>
+        <p className="text-sm text-muted-foreground">Minimums, then leftover balance weight</p>
       </div>
 
       <div className="flex flex-col gap-3">
         {targets.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Add at least one end product to plan.
-          </p>
+          <p className="text-sm text-muted-foreground">Add at least one end product to plan.</p>
         )}
         {targets.map((target, index) => (
-          <div
-            key={target.item}
-            className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3"
-          >
+          <div key={target.item} className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-medium">{itemById[target.item].name}</p>
-                <p className="text-xs text-muted-foreground">
-                  Tier {itemById[target.item].tier}
-                </p>
+                <p className="text-xs text-muted-foreground">Tier {itemById[target.item].tier}</p>
               </div>
               <Button
                 type="button"
@@ -97,9 +88,7 @@ export function TargetsPanel({ targets, onChange }: TargetsPanelProps) {
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <Label>Leftover weight</Label>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {target.weight}
-                </span>
+                <span className="text-xs tabular-nums text-muted-foreground">{target.weight}</span>
               </div>
               <Slider
                 min={0}

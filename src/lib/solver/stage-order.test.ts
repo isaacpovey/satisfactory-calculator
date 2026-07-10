@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { solve } from "@/lib/solver/allocate";
 import { buildStages } from "@/lib/solver/network";
-import {
-  buildChainGroups,
-  orderStagesByDependency,
-} from "@/lib/solver/stage-order";
+import { buildChainGroups, orderStagesByDependency } from "@/lib/solver/stage-order";
 import type { ProductionStage } from "@/lib/solver/types";
 
 function stageIndex(stages: ProductionStage[], recipeId: string): number {
@@ -29,9 +26,7 @@ describe("orderStagesByDependency", () => {
       excess: [],
     });
     const motorStages = motorResult.network.stages;
-    expect(stageIndex(motorStages, "iron-ingot")).toBeLessThan(
-      stageIndex(motorStages, "motor"),
-    );
+    expect(stageIndex(motorStages, "iron-ingot")).toBeLessThan(stageIndex(motorStages, "motor"));
   });
 
   it("places raw-only stages before downstream consumers", () => {
@@ -43,12 +38,8 @@ describe("orderStagesByDependency", () => {
       ]),
     );
     const ordered = orderStagesByDependency(stages);
-    expect(stageIndex(ordered, "iron-ingot")).toBeLessThan(
-      stageIndex(ordered, "iron-plate"),
-    );
-    expect(stageIndex(ordered, "iron-plate")).toBeLessThan(
-      stageIndex(ordered, "motor"),
-    );
+    expect(stageIndex(ordered, "iron-ingot")).toBeLessThan(stageIndex(ordered, "iron-plate"));
+    expect(stageIndex(ordered, "iron-plate")).toBeLessThan(stageIndex(ordered, "motor"));
   });
 });
 
@@ -87,9 +78,7 @@ describe("buildChainGroups", () => {
       ]),
     );
     const chains = buildChainGroups(stages, ["concrete"]);
-    const concreteChain = chains.find((c) =>
-      c.stageIds.includes("concrete"),
-    );
+    const concreteChain = chains.find((c) => c.stageIds.includes("concrete"));
     expect(concreteChain?.label).toContain("Concrete");
   });
 
@@ -101,9 +90,7 @@ describe("buildChainGroups", () => {
     });
 
     for (const chain of result.network.chains) {
-      const positions = new Map(
-        chain.stageIds.map((id, i) => [id, i]),
-      );
+      const positions = new Map(chain.stageIds.map((id, i) => [id, i]));
       for (const stageId of chain.stageIds) {
         const stage = result.network.stages.find((s) => s.recipeId === stageId);
         expect(stage).toBeDefined();

@@ -80,9 +80,7 @@ export const scarceRawIds: ItemId[] = items
   .map((item) => item.id);
 
 /** Smelted intermediates — never end products or excess sinks */
-export const ingotIds: ItemId[] = items
-  .filter((item) => item.isIngot)
-  .map((item) => item.id);
+export const ingotIds: ItemId[] = items.filter((item) => item.isIngot).map((item) => item.id);
 
 /** Manufactured parts that can be selected as end products or excess sinks */
 export const manufacturedItemIds: ItemId[] = items

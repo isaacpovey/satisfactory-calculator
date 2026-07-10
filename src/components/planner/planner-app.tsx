@@ -4,16 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
-import type {
-  ExcessSpec,
-  PlannerInput,
-  SolveResult,
-  TargetSpec,
-} from "@/lib/solver/types";
-import {
-  loadPlannerState,
-  savePlannerState,
-} from "@/lib/planner-storage";
+import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
 import { solve } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
 import { Button } from "@/components/ui/button";
@@ -48,30 +40,21 @@ function inputFingerprint(input: PlannerInput): string {
   });
 }
 
-function buildExcessInput(
-  floors: Partial<Record<ItemId, number>>,
-): ExcessSpec[] {
+function buildExcessInput(floors: Partial<Record<ItemId, number>>): ExcessSpec[] {
   return Object.entries(floors)
     .filter(([, rate]) => (rate ?? 0) > 0)
     .map(([item, rate]) => ({ item: item as ItemId, rate: rate ?? 0 }));
 }
 
 export function PlannerApp() {
-  const [rawAvailable, setRawAvailable] =
-    useState<Partial<Record<ItemId, number>>>(defaultRaws);
+  const [rawAvailable, setRawAvailable] = useState<Partial<Record<ItemId, number>>>(defaultRaws);
   const [targets, setTargets] = useState<TargetSpec[]>(defaultTargets);
-  const [excessFloors, setExcessFloors] = useState<
-    Partial<Record<ItemId, number>>
-  >({});
-  const [maxBeltCapacity, setMaxBeltCapacity] = useState(
-    DEFAULT_MAX_BELT_CAPACITY,
-  );
+  const [excessFloors, setExcessFloors] = useState<Partial<Record<ItemId, number>>>({});
+  const [maxBeltCapacity, setMaxBeltCapacity] = useState(DEFAULT_MAX_BELT_CAPACITY);
   const [hydrated, setHydrated] = useState(false);
 
   const [result, setResult] = useState<SolveResult | null>(null);
-  const [computedFingerprint, setComputedFingerprint] = useState<string | null>(
-    null,
-  );
+  const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
   const [changes, setChanges] = useState(emptyChanges);
   const prevResultRef = useRef<SolveResult | null>(null);
@@ -87,13 +70,9 @@ export function PlannerApp() {
     [rawAvailable, targets, excessFloors, maxBeltCapacity],
   );
 
-  const draftFingerprint = useMemo(
-    () => inputFingerprint(draftInput),
-    [draftInput],
-  );
+  const draftFingerprint = useMemo(() => inputFingerprint(draftInput), [draftInput]);
 
-  const dirty =
-    computedFingerprint !== null && draftFingerprint !== computedFingerprint;
+  const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
 
   useEffect(() => {
     const saved = loadPlannerState();
@@ -137,18 +116,28 @@ export function PlannerApp() {
     });
   }, []);
 
+  const initialComputeDone = useRef(false);
+
   // Initial compute after hydrate (uses saved or default draft).
   useEffect(() => {
-    if (!hydrated || result !== null || computing) return;
+    if (!hydrated || initialComputeDone.current || result !== null || computing) return;
+    initialComputeDone.current = true;
     runCompute({
       rawAvailable,
       targets,
       excess: buildExcessInput(excessFloors),
       maxBeltCapacity,
     });
-    // Only on hydrate — later runs are button-driven.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [
+    hydrated,
+    result,
+    computing,
+    rawAvailable,
+    targets,
+    excessFloors,
+    maxBeltCapacity,
+    runCompute,
+  ]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-8">
@@ -160,9 +149,9 @@ export function PlannerApp() {
           Resource-Max Planner
         </h1>
         <p className="text-base text-muted-foreground text-pretty">
-          Set your ore rates and minimum products, then compute. Leftover
-          capacity fills by balance weight and soaks into spare parts — never
-          raw ingots — with buildable machine banks and splitter shares.
+          Set your ore rates and minimum products, then compute. Leftover capacity fills by balance
+          weight and soaks into spare parts — never raw ingots — with buildable machine banks and
+          splitter shares.
         </p>
       </header>
 
@@ -170,14 +159,9 @@ export function PlannerApp() {
         <aside className="flex flex-col gap-5">
           <RawInputsPanel
             values={rawAvailable}
-            onChange={(item, value) =>
-              setRawAvailable((prev) => ({ ...prev, [item]: value }))
-            }
+            onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
           />
-          <BeltTierPanel
-            maxBeltCapacity={maxBeltCapacity}
-            onChange={setMaxBeltCapacity}
-          />
+          <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
           <TargetsPanel targets={targets} onChange={setTargets} />
           <ExcessPanel
             excess={result?.excess ?? []}
@@ -193,9 +177,7 @@ export function PlannerApp() {
           <div
             className={cn(
               "sticky bottom-4 z-10 flex flex-col gap-2 rounded-xl p-3 ring-1 backdrop-blur-sm",
-              dirty
-                ? "bg-primary/12 ring-primary/35"
-                : "bg-card/95 ring-foreground/8",
+              dirty ? "bg-primary/12 ring-primary/35" : "bg-card/95 ring-foreground/8",
             )}
           >
             {dirty ? (
@@ -245,9 +227,8 @@ export function PlannerApp() {
       </div>
 
       <footer className="border-t border-foreground/8 pt-4 text-xs text-muted-foreground">
-        Clocks 100 / 75 / 66.67 / 50 / 33.33 / 25% · belt-capped machine banks ·
-        nested 1/2 + 1/3 splits & merges · overflow to storage · saved in this
-        browser
+        Clocks 100 / 75 / 66.67 / 50 / 33.33 / 25% · belt-capped machine banks · nested 1/2 + 1/3
+        splits & merges · overflow to storage · saved in this browser
       </footer>
     </div>
   );

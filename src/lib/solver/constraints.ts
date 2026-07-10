@@ -54,10 +54,7 @@ export function isSplitterFriendlyCount(n: number): boolean {
   return SPLITTER_FRIENDLY_COUNTS.includes(rounded);
 }
 
-function machineCountOptions(
-  maxMachines: number,
-  anyMachineCount: boolean,
-): readonly number[] {
+function machineCountOptions(maxMachines: number, anyMachineCount: boolean): readonly number[] {
   if (anyMachineCount) {
     return Array.from({ length: Math.max(1, maxMachines) }, (_, i) => i + 1);
   }
@@ -70,10 +67,7 @@ function machineCountOptions(
  * higher clock.
  */
 export function representMachines(effectiveMachines: number): MachineConfig {
-  return representMachinesWithCounts(
-    effectiveMachines,
-    SPLITTER_FRIENDLY_COUNTS,
-  );
+  return representMachinesWithCounts(effectiveMachines, SPLITTER_FRIENDLY_COUNTS);
 }
 
 /**
@@ -86,10 +80,7 @@ export function representMachinesAny(effectiveMachines: number): MachineConfig {
   if (effective <= EPS) {
     return { machines: 0, clock: 1, effectiveMachines: 0 };
   }
-  const maxMachines = Math.max(
-    1,
-    Math.ceil(effective / CLOCK_QUANTUM + EPS),
-  );
+  const maxMachines = Math.max(1, Math.ceil(effective / CLOCK_QUANTUM + EPS));
   const counts = Array.from({ length: maxMachines }, (_, i) => i + 1);
   return representMachinesWithCounts(effectiveMachines, counts);
 }
@@ -116,11 +107,9 @@ function representMachinesWithCounts(
       if (
         !best ||
         candidate.effectiveMachines < best.effectiveMachines - EPS ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines < best.machines) ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines === best.machines &&
           candidate.clock > best.clock)
       ) {
@@ -174,16 +163,11 @@ function isBetterMulti(
 function sortGroups(groups: MachineConfig[]): MachineConfig[] {
   return [...groups].sort(
     (a, b) =>
-      b.clock - a.clock ||
-      b.machines - a.machines ||
-      b.effectiveMachines - a.effectiveMachines,
+      b.clock - a.clock || b.machines - a.machines || b.effectiveMachines - a.effectiveMachines,
   );
 }
 
-function findRemainderGroup(
-  remainder: number,
-  counts: readonly number[],
-): MachineConfig | null {
+function findRemainderGroup(remainder: number, counts: readonly number[]): MachineConfig | null {
   if (remainder <= EPS) return null;
   let best: MachineConfig | null = null;
   for (const machines of counts) {
@@ -200,11 +184,9 @@ function findRemainderGroup(
       if (
         !best ||
         candidate.effectiveMachines < best.effectiveMachines - EPS ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines < best.machines) ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines === best.machines &&
           candidate.clock > best.clock)
       ) {
@@ -230,10 +212,7 @@ export function representMachinesMulti(
   const effective = ceilEffectiveMachines(effectiveMachines);
   if (effective <= EPS) return [];
 
-  const maxMachines = Math.max(
-    1,
-    Math.ceil(effective / Math.min(...ALLOWED_CLOCKS) + EPS),
-  );
+  const maxMachines = Math.max(1, Math.ceil(effective / Math.min(...ALLOWED_CLOCKS) + EPS));
   const counts = machineCountOptions(maxMachines, !!opts.anyMachineCount);
   const countSet = new Set(counts);
 
@@ -261,10 +240,7 @@ export function representMachinesMulti(
       consider([remGroup]);
       continue;
     }
-    consider([
-      { machines: k, clock: 1, effectiveMachines: k },
-      remGroup,
-    ]);
+    consider([{ machines: k, clock: 1, effectiveMachines: k }, remGroup]);
   }
 
   // Two underclock groups when a single remainder cannot hit exactly and
@@ -278,10 +254,7 @@ export function representMachinesMulti(
       const rem = effective - e1;
       const g2 = findRemainderGroup(rem, counts);
       if (!g2) continue;
-      consider([
-        { machines: m1, clock: c1, effectiveMachines: e1 },
-        g2,
-      ]);
+      consider([{ machines: m1, clock: c1, effectiveMachines: e1 }, g2]);
     }
   }
 
@@ -328,10 +301,7 @@ export function floorQuantizeItemRate(
   const exact = desiredRate / base;
   let best = 0;
 
-  const maxMachines = Math.max(
-    1,
-    Math.ceil(exact / CLOCK_QUANTUM + EPS),
-  );
+  const maxMachines = Math.max(1, Math.ceil(exact / CLOCK_QUANTUM + EPS));
   const counts = machineCountOptions(maxMachines, !!opts.anyMachineCount);
 
   // Single-group floors
@@ -428,10 +398,7 @@ export function splitStepsForRatio(num: number, den: number): SplitterStep[] {
 /**
  * Best reduced 2^a·3^b fraction matching part/whole, or null if none.
  */
-export function friendlyRatio(
-  part: number,
-  whole: number,
-): { num: number; den: number } | null {
+export function friendlyRatio(part: number, whole: number): { num: number; den: number } | null {
   if (whole <= EPS) return part <= EPS ? { num: 0, den: 1 } : null;
   if (part <= EPS) return { num: 0, den: 1 };
   if (Math.abs(part - whole) <= EPS) return { num: 1, den: 1 };
@@ -503,10 +470,7 @@ export function snapSplitterShare(desired: number, whole: number): number {
  * Snap an excess branch so excess/(downstream+excess) is a 2^a·3^b fraction.
  * Chooses the largest excess ≤ desired that satisfies the ratio.
  */
-export function snapExcessBranch(
-  desiredExcess: number,
-  downstreamDemand: number,
-): number {
+export function snapExcessBranch(desiredExcess: number, downstreamDemand: number): number {
   if (desiredExcess <= EPS) return 0;
   const downstream = Math.max(0, downstreamDemand);
 
@@ -574,11 +538,7 @@ export function nextExcessAbove(
       if (den > maxDen) continue;
       for (let num = 1; num < den; num++) {
         const excess = (num * downstream) / (den - num);
-        if (
-          excess > current + EPS &&
-          excess <= desiredMax + EPS &&
-          excess < best
-        ) {
+        if (excess > current + EPS && excess <= desiredMax + EPS && excess < best) {
           best = excess;
         }
       }
@@ -600,10 +560,7 @@ export function snapChildFromParent(desired: number, parentRate: number): number
   return snapSplitterShare(desired, parentRate);
 }
 
-export function recipeDepth(
-  itemId: ItemId,
-  memo = new Map<ItemId, number>(),
-): number {
+export function recipeDepth(itemId: ItemId, memo = new Map<ItemId, number>()): number {
   if (memo.has(itemId)) return memo.get(itemId)!;
   const item = itemById[itemId];
   if (!item || item.isRaw) {
@@ -631,7 +588,7 @@ export function complexityScore(itemId: ItemId): number {
   return depth * 10 + inputs;
 }
 
-export function formatClock(clock: AllowedClock | number): string {
+export function formatClock(clock: AllowedClock): string {
   // Exact thirds display as repeating decimals players type in-game
   if (Math.abs(clock - 2 / 3) < 1e-9) return "66.67%";
   if (Math.abs(clock - 1 / 3) < 1e-9) return "33.33%";

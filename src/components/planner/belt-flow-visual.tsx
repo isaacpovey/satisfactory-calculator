@@ -1,18 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { formatRate } from "@/lib/solver/format";
-import type {
-  MergerStageRate,
-  SplitterStageRate,
-} from "@/lib/solver/group-inputs";
+import type { MergerStageRate, SplitterStageRate } from "@/lib/solver/group-inputs";
 import { cn } from "@/lib/utils";
 
-function RateText({
-  rate,
-  className,
-}: {
-  rate: number;
-  className?: string;
-}) {
+function RateText({ rate, className }: { rate: number; className?: string }) {
   return (
     <span className={cn("tabular-nums font-semibold", className)}>
       {formatRate(rate)}
@@ -40,9 +31,7 @@ export function InputSplitVisual({
     <div className="flex flex-col gap-3">
       <ol className="flex flex-col gap-0">
         <li className="flex items-center gap-3 py-1.5">
-          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
-            Belt in
-          </span>
+          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">Belt in</span>
           <RateText rate={beltIn.rate} className="text-sm text-foreground" />
         </li>
         {splits.map((stage, i) => (
@@ -68,12 +57,9 @@ export function InputSplitVisual({
 
       <div className="rounded-md bg-muted/50 px-2.5 py-2">
         <p className="text-[11px] text-muted-foreground">
-          Feeds{" "}
-          <span className="font-medium text-foreground tabular-nums">
-            {machines}
-          </span>{" "}
-          machine{machines === 1 ? "" : "s"} at{" "}
-          <RateText rate={perMachineRate} className="text-[11px]" /> each
+          Feeds <span className="font-medium text-foreground tabular-nums">{machines}</span> machine
+          {machines === 1 ? "" : "s"} at <RateText rate={perMachineRate} className="text-[11px]" />{" "}
+          each
         </p>
       </div>
     </div>
@@ -106,9 +92,7 @@ export function OutputMergeVisual({
               key={`src-${bankNo}`}
               className="flex items-center justify-between gap-3 rounded-md bg-background/70 px-2.5 py-1.5 ring-1 ring-foreground/8"
             >
-              <span className="text-[11px] text-muted-foreground">
-                Bank {bankNo}
-              </span>
+              <span className="text-[11px] text-muted-foreground">Bank {bankNo}</span>
               <RateText rate={rate} className="text-sm" />
             </li>
           );
@@ -126,24 +110,16 @@ export function OutputMergeVisual({
               )}
             >
               {stage.step ? (
-                <Badge
-                  variant="outline"
-                  className="font-mono text-[10px] font-normal"
-                >
+                <Badge variant="outline" className="font-mono text-[10px] font-normal">
                   {stage.step}
                 </Badge>
               ) : null}
               <span className="text-[11px] text-muted-foreground">
-                {stage.beltsIn === 1
-                  ? "combined belt"
-                  : `${stage.beltsIn} belts`}
+                {stage.beltsIn === 1 ? "combined belt" : `${stage.beltsIn} belts`}
               </span>
               <RateText
                 rate={stage.rate}
-                className={cn(
-                  "text-sm",
-                  stage.beltsIn === 1 && "text-primary",
-                )}
+                className={cn("text-sm", stage.beltsIn === 1 && "text-primary")}
               />
             </li>
           ))}

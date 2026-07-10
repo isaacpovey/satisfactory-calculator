@@ -30,9 +30,10 @@ import type { Recipe } from "@/data/types";
 
 const EPS = 1e-9;
 
-const buildingName = Object.fromEntries(
-  buildings.map((b) => [b.id, b.name]),
-) as Record<string, string>;
+const buildingName = Object.fromEntries(buildings.map((b) => [b.id, b.name])) as Record<
+  string,
+  string
+>;
 
 function mergeOnlyPlan(): SplitPlan {
   return { ratio: { num: 1, den: 1 }, steps: [], mergeOnly: true };
@@ -73,10 +74,7 @@ export type DestinationDemand = {
  * Prefer merging as many friendly-count belts as fit under the cap.
  * Preserves original bank indexes so UI labels stay Bank 1, Bank 2, …
  */
-export function buildOutputMerges(
-  bankOutputRates: number[],
-  maxBelt: number,
-): MergePlan[] {
+export function buildOutputMerges(bankOutputRates: number[], maxBelt: number): MergePlan[] {
   const belts: BankBelt[] = bankOutputRates
     .map((rate, index) => ({ index, rate }))
     .filter((b) => b.rate > EPS);
@@ -96,9 +94,7 @@ export function buildOutputMerges(
   }
 
   // Pack largest-first for capacity, but emit sources sorted by bank index.
-  const remaining = [...belts].sort(
-    (a, b) => b.rate - a.rate || a.index - b.index,
-  );
+  const remaining = [...belts].sort((a, b) => b.rate - a.rate || a.index - b.index);
   const merges: MergePlan[] = [];
 
   const toPlan = (lane: BankBelt[]): MergePlan => {
@@ -116,7 +112,7 @@ export function buildOutputMerges(
   while (remaining.length > 0) {
     const lane: BankBelt[] = [];
     let laneSum = 0;
-    for (let i = 0; i < remaining.length; ) {
+    for (let i = 0; i < remaining.length;) {
       const next = remaining[i]!;
       if (laneSum + next.rate > maxBelt + EPS) {
         i++;
@@ -173,9 +169,7 @@ export function packDestinationOutputs(
     .filter((d) => d.rate > EPS && d.to.kind !== "excess")
     .sort(
       (a, b) =>
-        b.rate - a.rate ||
-        a.to.kind.localeCompare(b.to.kind) ||
-        a.to.id.localeCompare(b.to.id),
+        b.rate - a.rate || a.to.kind.localeCompare(b.to.kind) || a.to.id.localeCompare(b.to.id),
     );
 
   const allConfigs: MachineConfig[] = [];
@@ -188,9 +182,7 @@ export function packDestinationOutputs(
     consumerRate: number,
   ) => {
     if (configs.length === 0) return;
-    const bankRates = configs.map(
-      (c) => primaryPerMachine * c.effectiveMachines,
-    );
+    const bankRates = configs.map((c) => primaryPerMachine * c.effectiveMachines);
     const localMerges = buildOutputMerges(bankRates, maxBelt);
     const packOut = bankRates.reduce((s, r) => s + r, 0);
     let remainingDemand = Math.min(consumerRate, packOut);
@@ -232,11 +224,7 @@ export function packDestinationOutputs(
     const configs = packMachineBanks(recipe, needEff, {
       maxBeltCapacity: maxBelt,
     });
-    appendPack(
-      configs,
-      { kind: "excess", id: recipe.outputs[0]!.item },
-      0,
-    );
+    appendPack(configs, { kind: "excess", id: recipe.outputs[0]!.item }, 0);
   }
 
   // If destination packs under-cover total crafts, fill remainder as excess
@@ -298,12 +286,7 @@ export function buildStages(
     const needEff = crafts / cyclesPerMin;
     const outputFromCrafts = crafts * primary.amount;
 
-    const dests = collectStageDestinations(
-      recipe.id,
-      primary.item,
-      recipeCrafts,
-      targetRates,
-    );
+    const dests = collectStageDestinations(recipe.id, primary.item, recipeCrafts, targetRates);
     const isIngot = itemById[primary.item]?.isIngot === true;
     const demandSum = dests.reduce((s, d) => s + d.rate, 0);
     const excessFloor = isIngot ? 0 : (excessRates.get(primary.item) ?? 0);
@@ -412,12 +395,7 @@ export function buildFactoryNetwork(
   excessRates: Map<ItemId, number>,
   maxBeltCapacity: number = DEFAULT_MAX_BELT_CAPACITY,
 ): FactoryNetwork {
-  const stages = buildStages(
-    recipeCrafts,
-    maxBeltCapacity,
-    targetRates,
-    excessRates,
-  );
+  const stages = buildStages(recipeCrafts, maxBeltCapacity, targetRates, excessRates);
 
   const edges: FlowEdge[] = [];
 
@@ -467,9 +445,7 @@ export function buildFactoryNetwork(
                 ratio: friendlyRatio(consumerRate, merge.rate),
                 steps: (() => {
                   const ratio = friendlyRatio(consumerRate, merge.rate);
-                  return ratio
-                    ? splitStepsForRatio(ratio.num, ratio.den)
-                    : [];
+                  return ratio ? splitStepsForRatio(ratio.num, ratio.den) : [];
                 })(),
                 mergeOnly: false,
                 restAfterOverflow: true,
@@ -518,9 +494,7 @@ export function buildFactoryNetwork(
     const an = itemById[a.item]?.name ?? a.item;
     const bn = itemById[b.item]?.name ?? b.item;
     return (
-      an.localeCompare(bn) ||
-      a.to.kind.localeCompare(b.to.kind) ||
-      a.to.id.localeCompare(b.to.id)
+      an.localeCompare(bn) || a.to.kind.localeCompare(b.to.kind) || a.to.id.localeCompare(b.to.id)
     );
   });
 

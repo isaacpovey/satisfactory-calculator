@@ -1,18 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getRecipeForProduct } from "@/data/recipes";
 import { inputSplitForGroup } from "./network";
-import {
-  buildStageInputBelts,
-  packInputBeltsForItem,
-  packSharedMachineSlots,
-} from "./input-belts";
+import { buildStageInputBelts, packInputBeltsForItem, packSharedMachineSlots } from "./input-belts";
 import type { MachineGroupPlan } from "./types";
 
-function bank(
-  machines: number,
-  clock: number,
-  outputPerMinute: number,
-): MachineGroupPlan {
+function bank(machines: number, clock: number, outputPerMinute: number): MachineGroupPlan {
   return {
     machines,
     clock,
@@ -35,12 +27,8 @@ describe("packInputBeltsForItem", () => {
     expect(belts).toHaveLength(2);
     expect(belts.every((b) => b.rate <= 270)).toBe(true);
     expect(belts[0]!.rate + belts[1]!.rate).toBeCloseTo(420);
-    expect(belts[0]!.feeds).toEqual([
-      { bankIndex: 0, rate: 180, machines: 4 },
-    ]);
-    expect(belts[1]!.feeds).toEqual([
-      { bankIndex: 1, rate: 240, machines: 8 },
-    ]);
+    expect(belts[0]!.feeds).toEqual([{ bankIndex: 0, rate: 180, machines: 4 }]);
+    expect(belts[1]!.feeds).toEqual([{ bankIndex: 1, rate: 240, machines: 8 }]);
   });
 
   it("peels oversized banks into per-machine slots under Mk2", () => {

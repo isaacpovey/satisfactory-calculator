@@ -11,20 +11,20 @@ Client-side Next.js planner for Satisfactory (Tier 0–4 standard recipes plus e
 ## Develop
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ## Test
 
 ```bash
-npm test
+pnpm test
 ```
 
 ## Build (static)
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 Output is written to `out/` for static hosting.

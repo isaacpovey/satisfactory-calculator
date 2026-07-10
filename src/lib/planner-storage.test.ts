@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  loadPlannerState,
-  PLANNER_STORAGE_KEY,
-  savePlannerState,
-} from "./planner-storage";
+import { loadPlannerState, PLANNER_STORAGE_KEY, savePlannerState } from "./planner-storage";
 
 function installMemoryStorage() {
   const store = new Map<string, string>();
