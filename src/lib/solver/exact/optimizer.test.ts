@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { items, scarceRawIds } from "@/data/items";
 import { recipes } from "@/data/recipes";
 import type { Item, Recipe } from "@/data/types";
+import { solveExact } from "../index";
+import type { SolveResult } from "../types";
 import {
   equalLaneTreeDevices,
   generateMachineBankPatterns,
@@ -52,6 +54,72 @@ function tinyInput(overrides: Partial<ExactOptimizerInput> = {}): ExactOptimizer
     beltCapacity: 10,
     ...overrides,
   };
+}
+
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function expectPlannerConservation(result: SolveResult): void {
+  for (const stage of result.network.stages) {
+    expect(stage.outputMerges).toHaveLength(stage.groups.length);
+    for (const [laneIndex, lane] of stage.outputMerges.entries()) {
+      const edges = result.network.edges.filter(
+        (edge) =>
+          edge.from.kind === "stage" &&
+          edge.from.id === stage.recipeId &&
+          edge.fromLaneIndex === laneIndex,
+      );
+      expect(sum(edges.map((edge) => edge.rate))).toBeCloseTo(lane.rate, 8);
+      expect(sum((lane.withdrawals ?? []).map((entry) => entry.rate))).toBeCloseTo(lane.rate, 8);
+    }
+    for (const belt of stage.inputBelts) {
+      expect(belt.feeds).toHaveLength(1);
+      const feed = belt.feeds[0]!;
+      const edges = result.network.edges.filter(
+        (edge) =>
+          edge.item === belt.item &&
+          edge.to.kind === "recipe" &&
+          edge.to.id === stage.recipeId &&
+          edge.toBankIndex === feed.bankIndex,
+      );
+      expect(sum(edges.map((edge) => edge.rate))).toBeCloseTo(belt.rate, 8);
+    }
+  }
+
+  for (const flow of result.items) {
+    const produced = sum(
+      result.network.stages.flatMap((stage) =>
+        stage.primaryOutput === flow.item ? stage.outputMerges.map((lane) => lane.rate) : [],
+      ),
+    );
+    const consumed = sum(
+      result.network.edges
+        .filter((edge) => edge.item === flow.item && edge.to.kind === "recipe")
+        .map((edge) => edge.rate),
+    );
+    const withdrawn = sum(
+      result.network.edges
+        .filter(
+          (edge) =>
+            edge.item === flow.item && (edge.to.kind === "target" || edge.to.kind === "excess"),
+        )
+        .map((edge) => edge.rate),
+    );
+    expect(flow.produced).toBeCloseTo(produced, 8);
+    expect(flow.consumed).toBeCloseTo(consumed, 8);
+    expect(flow.net).toBeCloseTo(produced - consumed, 8);
+    if (produced > 0) expect(produced).toBeCloseTo(consumed + withdrawn, 8);
+  }
+  for (const raw of result.raws) {
+    const used = sum(
+      result.network.edges
+        .filter((edge) => edge.from.kind === "raw" && edge.item === raw.item)
+        .map((edge) => edge.rate),
+    );
+    expect(raw.used).toBeCloseTo(used, 8);
+    expect(raw.available).toBeCloseTo(raw.used + raw.leftover, 8);
+  }
 }
 
 interface BrutePattern {
@@ -365,5 +433,71 @@ describe("solveExactProduction", () => {
       totalSplitterMergerDevices: BigInt(1),
     });
     expect(validateExactSolution(input, result)).toEqual({ valid: true, issues: [] });
+  });
+});
+
+describe("solveExact planner integration", () => {
+  it("projects Quickwire 200 as one exact four-machine 5/6 bank", async () => {
+    const result = await solveExact({
+      rawAvailable: { "caterium-ore": 120 },
+      targets: [{ item: "quickwire", minRate: 200, weight: 1 }],
+      excess: [],
+      maxBeltCapacity: 999,
+    });
+
+    expect(result).toMatchObject({
+      feasible: true,
+      proofStatus: "OPTIMAL",
+      maxBeltCapacity: 270,
+    });
+    expect(result.objective).not.toBeNull();
+    expect(result.targets).toContainEqual({
+      item: "quickwire",
+      minRate: 200,
+      plannedMinRate: 200,
+      extraRate: 0,
+      totalRate: 200,
+      weight: 1,
+    });
+    const stage = result.network.stages.find((entry) => entry.recipeId === "quickwire");
+    expect(stage?.groups).toEqual([
+      expect.objectContaining({
+        machines: 4,
+        clock: 5 / 6,
+        effectiveMachines: 10 / 3,
+        outputPerMinute: 200,
+      }),
+    ]);
+    expect(stage?.outputMerges).toHaveLength(1);
+    expect(result.recipes.filter((usage) => usage.recipeId === "quickwire")).toHaveLength(1);
+    expectPlannerConservation(result);
+  });
+
+  it("routes one selected bank lane to exact backpressured destinations", async () => {
+    const result = await solveExact({
+      rawAvailable: { "iron-ore": 30 },
+      targets: [
+        { item: "iron-plate", minRate: 10, weight: 0 },
+        { item: "iron-rod", minRate: 10, weight: 0 },
+      ],
+      excess: [],
+      maxBeltCapacity: 60,
+    });
+
+    const ingotStage = result.network.stages.find((stage) => stage.recipeId === "iron-ingot");
+    expect(ingotStage?.outputMerges).toEqual([
+      expect.objectContaining({
+        rate: 30,
+        routing: "demand-balanced-manifold",
+        backpressure: true,
+      }),
+    ]);
+    expect(ingotStage?.outputMerges[0]?.withdrawals).toHaveLength(2);
+    const ingotEdges = result.network.edges.filter(
+      (edge) => edge.from.kind === "stage" && edge.from.id === "iron-ingot",
+    );
+    expect(ingotEdges).toHaveLength(2);
+    expect(ingotEdges.every((edge) => edge.outputSplit.demandBalanced === true)).toBe(true);
+    expectPlannerConservation(result);
   });
 });
