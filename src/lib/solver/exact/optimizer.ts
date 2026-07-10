@@ -5,6 +5,7 @@ import {
   CpSolver,
   CpSolverStatus,
   LinearExpr,
+  terminateWorkerBridge,
   type IntVar,
 } from "or-tools-wasm/cp-sat";
 import type { ItemId } from "@/data/types";
@@ -1072,6 +1073,10 @@ function emptyResult(status: "INFEASIBLE" | "CANCELLED"): ExactOptimizerResult {
 
 /** Cancels the active or-tools-wasm CP-SAT solve, if any. */
 export function cancelExactSolve(): Promise<void> {
+  if (CpSat.isWorkerBridgeEnabled()) {
+    terminateWorkerBridge("Exact solve cancelled.");
+    return Promise.resolve();
+  }
   return CpSat.cancelSolve();
 }
 
@@ -1105,6 +1110,9 @@ export async function solveExactProduction(
       );
     }
     return result;
+  } catch (error: unknown) {
+    if (input.signal?.aborted) return emptyResult("CANCELLED");
+    throw error;
   } finally {
     input.signal?.removeEventListener("abort", onAbort);
   }
