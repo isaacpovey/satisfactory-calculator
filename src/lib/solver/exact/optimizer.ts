@@ -55,7 +55,19 @@ interface PatternVariable {
   readonly pattern: ExactMachineBankPattern;
   readonly variable: IntVar;
   readonly upperBound: bigint;
+  readonly symmetryUpperBound: bigint;
   readonly order: number;
+}
+
+interface ProductionVariable {
+  readonly pattern: ExactMachineBankPattern;
+  readonly variable: IntVar;
+  readonly upperBound: bigint;
+}
+
+interface BoundedPattern {
+  readonly pattern: ExactMachineBankPattern;
+  readonly upperBound: bigint;
 }
 
 interface WithdrawalVariable {
@@ -72,6 +84,7 @@ interface RoutingVariable {
 
 interface ModelState {
   readonly model: CpModel;
+  readonly production: readonly ProductionVariable[];
   readonly patterns: readonly PatternVariable[];
   readonly targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
   readonly excessVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
@@ -168,6 +181,52 @@ function internalDevices(pattern: ExactMachineBankPattern, inputCount: number): 
   return equalLaneTreeDevices(pattern.machines) * BigInt(inputCount + 1);
 }
 
+/**
+ * Removes only strict single-bank dominance: equal effective production has
+ * equal material rates and group count, so the representation with fewer
+ * physical machines is better in every earlier lexicographic phase.
+ */
+function removeDominatedPatterns(
+  patterns: readonly ExactMachineBankPattern[],
+): readonly ExactMachineBankPattern[] {
+  const bestByEffectiveRate = new Map<string, ExactMachineBankPattern>();
+  for (const pattern of patterns) {
+    const key = pattern.effectiveMachines.toFractionString();
+    const incumbent = bestByEffectiveRate.get(key);
+    if (!incumbent || pattern.machines < incumbent.machines) {
+      bestByEffectiveRate.set(key, pattern);
+    }
+  }
+  return patterns.filter(
+    (pattern) => bestByEffectiveRate.get(pattern.effectiveMachines.toFractionString()) === pattern,
+  );
+}
+
+/**
+ * Bounds interchangeable copies of a smaller bank. If k copies have exactly
+ * the rate of one available larger bank using no more physical machines, those
+ * k copies are lexicographically dominated (same flow, fewer machines or
+ * groups after replacement). Keeping at most k - 1 preserves every
+ * non-dominated complete solution.
+ */
+function tightenMultiplicityBound(
+  entry: BoundedPattern,
+  recipePatterns: readonly BoundedPattern[],
+): bigint {
+  let upperBound = entry.upperBound;
+  for (const replacement of recipePatterns) {
+    if (replacement === entry) continue;
+    const ratio = replacement.pattern.effectiveMachines.divide(entry.pattern.effectiveMachines);
+    if (!ratio.isInteger()) continue;
+    const copies = ratio.numerator;
+    if (copies <= ONE_BIGINT) continue;
+    if (replacement.pattern.machines > entry.pattern.machines * copies) continue;
+    const canonicalUpperBound = copies - ONE_BIGINT;
+    if (canonicalUpperBound < upperBound) upperBound = canonicalUpperBound;
+  }
+  return upperBound;
+}
+
 function createPatternVariables(
   input: ExactOptimizerInput,
   model: CpModel,
@@ -180,11 +239,17 @@ function createPatternVariables(
   for (const recipe of input.graph.topologicalRecipes) {
     const bound = bounds.get(recipe.id);
     if (!bound) throw new Error(`Missing exact recipe bound: ${recipe.id}`);
-    for (const pattern of generateMachineBankPatterns(bound, beltCapacity)) {
+    const generated = generateMachineBankPatterns(bound, beltCapacity);
+    const nonDominated = removeDominatedPatterns(generated);
+    const bounded = nonDominated.flatMap((pattern): readonly BoundedPattern[] => {
       const upperBound = bound.maxEffectiveMachines.divide(pattern.effectiveMachines).floor();
-      if (upperBound <= ZERO_BIGINT) continue;
+      return upperBound > ZERO_BIGINT ? [{ pattern, upperBound }] : [];
+    });
+    for (const entry of bounded) {
+      const { pattern } = entry;
+      const symmetryUpperBound = tightenMultiplicityBound(entry, bounded);
       const safeUpperBound = checkedSafeInteger(
-        upperBound,
+        entry.upperBound,
         `${recipe.id} ${pattern.machines}@${pattern.clock.toFractionString()} multiplicity bound`,
       );
       variables.push({
@@ -194,7 +259,8 @@ function createPatternVariables(
           safeUpperBound,
           `bank_${recipe.id}_${pattern.machines}_${pattern.clock.toFractionString()}`,
         ),
-        upperBound,
+        upperBound: entry.upperBound,
+        symmetryUpperBound,
         order,
       });
       order++;
@@ -203,10 +269,47 @@ function createPatternVariables(
   return variables;
 }
 
+function createProductionVariables(
+  input: ExactOptimizerInput,
+  model: CpModel,
+  beltCapacity: Rational,
+): readonly ProductionVariable[] {
+  const bounds = computeRecipeBounds(input.graph, input.rawAvailability);
+  const variables: ProductionVariable[] = [];
+  for (const recipe of input.graph.topologicalRecipes) {
+    const bound = bounds.get(recipe.id);
+    if (!bound) throw new Error(`Missing exact recipe bound: ${recipe.id}`);
+    const oneMachinePatterns = generateMachineBankPatterns(bound, beltCapacity)
+      .filter((pattern) => pattern.machines === ONE_BIGINT)
+      .toSorted((left, right) => left.effectiveMachines.compare(right.effectiveMachines));
+    const generators: ExactMachineBankPattern[] = [];
+    for (const pattern of oneMachinePatterns) {
+      const isRedundant = generators.some((generator) =>
+        pattern.effectiveMachines.divide(generator.effectiveMachines).isInteger(),
+      );
+      if (!isRedundant) generators.push(pattern);
+    }
+    for (const pattern of generators) {
+      const upperBound = bound.maxEffectiveMachines.divide(pattern.effectiveMachines).floor();
+      if (upperBound <= ZERO_BIGINT) continue;
+      variables.push({
+        pattern,
+        variable: model.newIntVar(
+          0,
+          checkedSafeInteger(upperBound, `${recipe.id} production-rate multiplicity bound`),
+          `production_${recipe.id}_${pattern.clock.toFractionString()}`,
+        ),
+        upperBound,
+      });
+    }
+  }
+  return variables;
+}
+
 function addRawConstraints(
   input: ExactOptimizerInput,
   model: CpModel,
-  patterns: readonly PatternVariable[],
+  patterns: readonly ProductionVariable[],
 ): void {
   for (const itemId of input.graph.scarceRawIds) {
     const available = Rational.from(input.rawAvailability[itemId] ?? 0);
@@ -245,7 +348,7 @@ function addRawConstraints(
 function addConservationRows(
   input: ExactOptimizerInput,
   model: CpModel,
-  patterns: readonly PatternVariable[],
+  patterns: readonly ProductionVariable[],
   targets: readonly NormalizedTarget[],
   excess: readonly NormalizedExcess[],
 ): {
@@ -462,13 +565,14 @@ function addRoutingVariables(
 
 function objectiveTerms(
   input: ExactOptimizerInput,
+  production: readonly ProductionVariable[],
   patterns: readonly PatternVariable[],
   targets: readonly NormalizedTarget[],
   targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>,
   routingVariables: readonly RoutingVariable[],
 ): ModelState["objectives"] {
   const scarceSet = new Set(input.graph.scarceRawIds);
-  const scarceRawTerms = patterns.map((entry) => {
+  const scarceRawTerms = production.map((entry) => {
     const rate = entry.pattern.inputRates.reduce(
       (total, inputRate) => (scarceSet.has(inputRate.item) ? total.add(inputRate.rate) : total),
       ZERO,
@@ -535,9 +639,10 @@ function buildModel(
 ): ModelState {
   const model = new CpModel();
   model.name = "exact-production-optimizer";
+  const production = createProductionVariables(input, model, beltCapacity);
   const patterns = createPatternVariables(input, model, beltCapacity);
-  addRawConstraints(input, model, patterns);
-  const withdrawals = addConservationRows(input, model, patterns, targets, excess);
+  addRawConstraints(input, model, production);
+  const withdrawals = addConservationRows(input, model, production, targets, excess);
   const routingVariables = addRoutingVariables(
     input,
     model,
@@ -547,17 +652,185 @@ function buildModel(
   );
   return {
     model,
+    production,
     patterns,
     ...withdrawals,
     routingVariables,
     objectives: objectiveTerms(
       input,
+      production,
       patterns,
       targets,
       withdrawals.targetVariables,
       routingVariables,
     ),
   };
+}
+
+function installCompleteSolutionHint(model: CpModel, solver: CpSolver): number {
+  const solution = solver.response()?.solution;
+  if (!solution) throw new Error("OPTIMAL solve did not expose a complete solution hint");
+  const proto = model.proto();
+  proto.solutionHint = {
+    vars: solution.map((_, index) => index),
+    values: [...solution],
+  };
+  return solution.length;
+}
+
+function addBankRepresentationLinks(state: ModelState): void {
+  const recipeIds = new Set(state.production.map((entry) => entry.pattern.recipeId));
+  for (const recipeId of recipeIds) {
+    const production = state.production.filter((entry) => entry.pattern.recipeId === recipeId);
+    const banks = state.patterns.filter((entry) => entry.pattern.recipeId === recipeId);
+    const scale = denominatorLcm([
+      ...production.map((entry) => entry.pattern.effectiveMachines),
+      ...banks.map((entry) => entry.pattern.effectiveMachines),
+    ]);
+    const variables = [
+      ...production.map((entry) => entry.variable),
+      ...banks.map((entry) => entry.variable),
+    ];
+    const coefficients = [
+      ...production.map((entry) =>
+        checkedSafeInteger(
+          exactInteger(entry.pattern.effectiveMachines, scale, `${recipeId} production link`),
+          `${recipeId} production link`,
+        ),
+      ),
+      ...banks.map((entry) =>
+        checkedSafeInteger(
+          -exactInteger(entry.pattern.effectiveMachines, scale, `${recipeId} bank link`),
+          `${recipeId} bank link`,
+        ),
+      ),
+    ];
+    let maximumAbsoluteRow = ZERO_BIGINT;
+    const entries: readonly ProductionVariable[] = [...production, ...banks];
+    for (let index = 0; index < entries.length; index++) {
+      const coefficient = BigInt(coefficients[index]!);
+      const contribution = coefficient * entries[index]!.upperBound;
+      maximumAbsoluteRow += contribution < ZERO_BIGINT ? -contribution : contribution;
+    }
+    checkedSafeInteger(maximumAbsoluteRow, `${recipeId} bank-link row maximum`);
+    state.model.addEquality(LinearExpr.weightedSum(variables, coefficients), 0);
+  }
+}
+
+function tightenPatternDomains(state: ModelState, physicalMachineOptimum: bigint): void {
+  const protoVariables = state.model.proto().variables;
+  if (!protoVariables) throw new Error("CP-SAT model has no variables to tighten");
+  for (const pattern of state.patterns) {
+    const physicalUpperBound = physicalMachineOptimum / pattern.pattern.machines;
+    const upperBound =
+      pattern.symmetryUpperBound < physicalUpperBound
+        ? pattern.symmetryUpperBound
+        : physicalUpperBound;
+    const proto = protoVariables[pattern.variable.index];
+    if (!proto) throw new Error(`Missing bank variable proto: ${pattern.pattern.recipeId}`);
+    proto.domain = [
+      0,
+      checkedSafeInteger(
+        upperBound,
+        `${pattern.pattern.recipeId} post-machine multiplicity upper bound`,
+      ),
+    ];
+  }
+}
+
+function physicalOptimumAsBigInt(optimum: number): bigint {
+  if (!Number.isSafeInteger(optimum) || optimum < 0) {
+    throw new RangeError(`Physical-machine optimum is not a non-negative safe integer: ${optimum}`);
+  }
+  return BigInt(optimum);
+}
+
+function addPostMachineReductions(state: ModelState, optimum: number): void {
+  tightenPatternDomains(state, physicalOptimumAsBigInt(optimum));
+}
+
+function addCoreHints(
+  state: ModelState,
+  solver: CpSolver,
+  bankValues: ReadonlyMap<PatternVariable, number>,
+): number {
+  const proto = state.model.proto();
+  proto.solutionHint = { vars: [], values: [] };
+  let count = 0;
+  for (const entry of state.production) {
+    state.model.addHint(entry.variable, solver.value(entry.variable));
+    count++;
+  }
+  for (const entry of state.patterns) {
+    state.model.addHint(entry.variable, bankValues.get(entry) ?? 0);
+    count++;
+  }
+  for (const withdrawal of [...state.targetVariables.values(), ...state.excessVariables.values()]) {
+    state.model.addHint(withdrawal.variable, solver.value(withdrawal.variable));
+    count++;
+  }
+  return count;
+}
+
+function installInitialBankHint(state: ModelState, solver: CpSolver): number {
+  const banksByRate = new Map(
+    state.patterns
+      .filter((entry) => entry.pattern.machines === ONE_BIGINT)
+      .map((entry) => [
+        `${entry.pattern.recipeId}:${entry.pattern.effectiveMachines.toFractionString()}`,
+        entry,
+      ]),
+  );
+  const bankValues = new Map<PatternVariable, number>();
+  for (const entry of state.production) {
+    const value = solver.value(entry.variable);
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`Non-integral production hint for ${entry.pattern.recipeId}: ${value}`);
+    }
+    const bank = banksByRate.get(
+      `${entry.pattern.recipeId}:${entry.pattern.effectiveMachines.toFractionString()}`,
+    );
+    if (!bank) {
+      throw new Error(`Missing one-machine bank representation for ${entry.pattern.recipeId}`);
+    }
+    bankValues.set(bank, (bankValues.get(bank) ?? 0) + value);
+  }
+  return addCoreHints(state, solver, bankValues);
+}
+
+function installCanonicalBankHint(state: ModelState, solver: CpSolver): number {
+  const bankValues = new Map<PatternVariable, number>();
+  for (const entry of state.patterns) {
+    const value = solver.value(entry.variable);
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`Non-integral bank hint for ${entry.pattern.recipeId}: ${value}`);
+    }
+    bankValues.set(entry, value);
+  }
+  const ascendingRates = state.patterns.toSorted((left, right) =>
+    left.pattern.effectiveMachines.compare(right.pattern.effectiveMachines),
+  );
+  for (const entry of ascendingRates) {
+    if (entry.symmetryUpperBound >= entry.upperBound) continue;
+    const copies = entry.symmetryUpperBound + ONE_BIGINT;
+    const replacement = state.patterns.find(
+      (candidate) =>
+        candidate.pattern.recipeId === entry.pattern.recipeId &&
+        candidate.pattern.effectiveMachines.equals(
+          entry.pattern.effectiveMachines.multiply(new Rational(copies)),
+        ) &&
+        candidate.pattern.machines <= entry.pattern.machines * copies,
+    );
+    if (!replacement) {
+      throw new Error(`Missing canonical replacement bank for ${entry.pattern.recipeId}`);
+    }
+    const safeCopies = checkedSafeInteger(copies, `${entry.pattern.recipeId} symmetry radix`);
+    const value = bankValues.get(entry) ?? 0;
+    const transfers = Math.floor(value / safeCopies);
+    bankValues.set(entry, value % safeCopies);
+    bankValues.set(replacement, (bankValues.get(replacement) ?? 0) + transfers);
+  }
+  return addCoreHints(state, solver, bankValues);
 }
 
 async function solveLexicographically(
@@ -579,6 +852,7 @@ async function solveLexicographically(
     const status = await solver.solve(state.model, {
       numSearchWorkers: 1,
       randomSeed: 1,
+      repairHint: true,
     });
     const statusName = solver.statusName(status);
     if (status === CpSolverStatus.INFEASIBLE || statusName === "INFEASIBLE") {
@@ -597,6 +871,15 @@ async function solveLexicographically(
       throw new RangeError(`${objective.label} optimum is not an exact safe integer: ${optimum}`);
     }
     state.model.addEquality(integer.expression, optimum);
+    if (index === 1) {
+      addBankRepresentationLinks(state);
+      installInitialBankHint(state, solver);
+    } else if (index === 2) {
+      addPostMachineReductions(state, optimum);
+      installCanonicalBankHint(state, solver);
+    } else {
+      installCompleteSolutionHint(state.model, solver);
+    }
     lastSolver = solver;
   }
   return { solver: lastSolver, status: "OPTIMAL" };
