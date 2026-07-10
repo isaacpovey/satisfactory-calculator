@@ -50,6 +50,32 @@ export function isCanonicalSplitterMachineCount(count: bigint): boolean {
   return remainder === ONE_BIGINT;
 }
 
+/**
+ * Minimum splitter (or merger) devices in a full equal-lane tree. Applying
+ * binary stages before ternary stages minimizes the number of internal nodes.
+ */
+export function equalLaneTreeDevices(count: bigint): bigint {
+  if (!isCanonicalSplitterMachineCount(count)) {
+    throw new RangeError(`Machine count is not splitter-friendly: ${count}`);
+  }
+  if (count === ONE_BIGINT) return ZERO_BIGINT;
+
+  let remaining = count;
+  let lanes = ONE_BIGINT;
+  let devices = ZERO_BIGINT;
+  while (remaining % TWO_BIGINT === ZERO_BIGINT) {
+    devices += lanes;
+    lanes *= TWO_BIGINT;
+    remaining /= TWO_BIGINT;
+  }
+  while (remaining % THREE_BIGINT === ZERO_BIGINT) {
+    devices += lanes;
+    lanes *= THREE_BIGINT;
+    remaining /= THREE_BIGINT;
+  }
+  return devices;
+}
+
 function minimum(left: bigint, right: bigint): bigint {
   return left < right ? left : right;
 }
