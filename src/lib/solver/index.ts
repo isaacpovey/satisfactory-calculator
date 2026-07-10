@@ -6,8 +6,12 @@ export type {
   SolveObjective,
   SolveProofStatus,
 } from "./types";
-export { solve } from "./allocate";
-export { solveExact, solveExactPlanner, type ExactPlannerSolveOptions } from "./exact-planner";
+export {
+  solveExact as solve,
+  solveExact,
+  solveExactPlanner,
+  type ExactPlannerSolveOptions,
+} from "./exact-planner";
 export { rawCoefficients } from "./bom";
 export { formatMachines, formatPercent, formatRate } from "./format";
 export {
