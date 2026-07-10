@@ -344,21 +344,21 @@ asset paths correctly in a Next.js static export.
 
 ## File map
 
-| File | Responsibility |
-| --- | --- |
-| `index.ts` | Public API; `solve` is the exact asynchronous solver |
-| `types.ts` | Planner inputs, results, bank, belt, edge, and proof-status types |
-| `exact-planner.ts` | Planner adapter and authoritative network construction |
-| `exact/rational.ts` | Normalized `BigInt` rational arithmetic |
-| `exact/integer-linear.ts` | Exact rational-to-integer CP-SAT row conversion |
-| `exact/recipe-graph.ts` | Recipe graph validation and indexes |
-| `exact/underclocks.ts` | Complete recipe-specific legal clock generation |
-| `exact/bounds.ts` | Transitive raw coefficients and finite activity bounds |
-| `exact/bank-patterns.ts` | Belt-safe machine-bank and topology patterns |
-| `exact/optimizer.ts` | CP-SAT constraints and lexicographic solve |
-| `exact/optimizer-types.ts` | Exact optimizer input and result types |
-| `exact/validation.ts` | Independent post-solve correctness checks |
-| `stage-order.ts` | Display ordering and production-chain grouping |
+| File                       | Responsibility                                                    |
+| -------------------------- | ----------------------------------------------------------------- |
+| `index.ts`                 | Public API; `solve` is the exact asynchronous solver              |
+| `types.ts`                 | Planner inputs, results, bank, belt, edge, and proof-status types |
+| `exact-planner.ts`         | Planner adapter and authoritative network construction            |
+| `exact/rational.ts`        | Normalized `BigInt` rational arithmetic                           |
+| `exact/integer-linear.ts`  | Exact rational-to-integer CP-SAT row conversion                   |
+| `exact/recipe-graph.ts`    | Recipe graph validation and indexes                               |
+| `exact/underclocks.ts`     | Complete recipe-specific legal clock generation                   |
+| `exact/bounds.ts`          | Transitive raw coefficients and finite activity bounds            |
+| `exact/bank-patterns.ts`   | Belt-safe machine-bank and topology patterns                      |
+| `exact/optimizer.ts`       | CP-SAT constraints and lexicographic solve                        |
+| `exact/optimizer-types.ts` | Exact optimizer input and result types                            |
+| `exact/validation.ts`      | Independent post-solve correctness checks                         |
+| `stage-order.ts`           | Display ordering and production-chain grouping                    |
 
 ## Tests
 
