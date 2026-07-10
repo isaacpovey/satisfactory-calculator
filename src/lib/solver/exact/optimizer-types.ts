@@ -25,6 +25,16 @@ export interface ExactSolveProgress {
   readonly phaseCount: number;
   readonly label: string;
   readonly status: "solving" | "complete";
+  /** CP-SAT search worker threads used for this solve. */
+  readonly searchWorkers: number;
+  /** Logical CPU cores reported by the runtime, if known. */
+  readonly hardwareConcurrency: number | null;
+  /** Wall time for the completed phase in milliseconds. */
+  readonly phaseMs?: number;
+  /** Branches explored during the completed phase. */
+  readonly numBranches?: number;
+  /** Conflicts during the completed phase. */
+  readonly numConflicts?: number;
 }
 
 export interface ExactOptimizerInput {

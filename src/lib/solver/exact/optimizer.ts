@@ -850,6 +850,12 @@ function installCanonicalBankHint(state: ModelState, solver: CpSolver): number {
   return addCoreHints(state, solver, bankValues);
 }
 
+/** Browser-only CP-SAT / solve diagnostics (quiet in Node tests). */
+function logSolveConsole(...args: unknown[]): void {
+  if (typeof globalThis.window === "undefined") return;
+  console.info(...args);
+}
+
 async function solveLexicographically(
   state: ModelState,
   input: ExactOptimizerInput,
@@ -858,35 +864,65 @@ async function solveLexicographically(
   readonly status: "OPTIMAL" | "INFEASIBLE" | "CANCELLED";
 }> {
   let lastSolver: CpSolver | null = null;
-  const searchWorkers = selectSearchWorkers(input.searchWorkers);
+  const hardwareConcurrency = globalThis.navigator?.hardwareConcurrency ?? null;
+  const searchWorkers = selectSearchWorkers(input.searchWorkers, hardwareConcurrency ?? undefined);
+  const solveStarted = performance.now();
+  const phaseTimings: { label: string; ms: number; branches: number; conflicts: number }[] = [];
+
+  logSolveConsole(
+    `[solver] starting · ${searchWorkers} workers / ${hardwareConcurrency ?? "?"} cores`,
+    {
+      searchWorkers,
+      hardwareConcurrency,
+      phaseCount: state.objectives.length,
+    },
+  );
+
   for (let index = 0; index < state.objectives.length; index++) {
     if (input.signal?.aborted) return { solver: lastSolver, status: "CANCELLED" };
     const objective = state.objectives[index]!;
-    const progress = {
+    const progressBase = {
       phase: index + 1,
       phaseCount: state.objectives.length,
       label: objective.label,
+      searchWorkers,
+      hardwareConcurrency,
     } as const;
-    input.onProgress?.({ ...progress, status: "solving" });
+    input.onProgress?.({ ...progressBase, status: "solving" });
+    logSolveConsole(
+      `[solver] phase ${progressBase.phase}/${progressBase.phaseCount} · ${objective.label}`,
+    );
     const integer = safeIntegerExpression(objective.terms, objective.label);
     if (objective.maximize) state.model.maximize(integer.expression);
     else state.model.minimize(integer.expression);
 
     const solver = new CpSolver();
+    solver.logCallback = (message) => {
+      logSolveConsole(`[cp-sat] ${message.trimEnd()}`);
+    };
+    const phaseStarted = performance.now();
     const status = await solver.solve(state.model, {
       numWorkers: searchWorkers,
       randomSeed: 1,
       repairHint: true,
+      logSearchProgress: typeof globalThis.window !== "undefined",
+      logToStdout: false,
     });
+    const phaseMs = performance.now() - phaseStarted;
     const statusName = solver.statusName(status);
     if (status === CpSolverStatus.INFEASIBLE || statusName === "INFEASIBLE") {
       if (index !== 0) throw new Error(`Lexicographic phase became infeasible: ${objective.label}`);
+      logSolveConsole(`[solver] infeasible after ${phaseMs.toFixed(1)}ms`, {
+        searchWorkers,
+        hardwareConcurrency,
+      });
       return { solver: null, status: "INFEASIBLE" };
     }
     if (status !== CpSolverStatus.OPTIMAL && statusName !== "OPTIMAL") {
       if (statusName === "MODEL_INVALID") {
         throw new Error(`CP-SAT rejected the exact optimizer model during ${objective.label}`);
       }
+      logSolveConsole(`[solver] cancelled during ${objective.label} after ${phaseMs.toFixed(1)}ms`);
       return { solver, status: "CANCELLED" };
     }
 
@@ -894,6 +930,29 @@ async function solveLexicographically(
     if (!Number.isSafeInteger(optimum)) {
       throw new RangeError(`${objective.label} optimum is not an exact safe integer: ${optimum}`);
     }
+    const numBranches = solver.numBranches;
+    const numConflicts = solver.numConflicts;
+    phaseTimings.push({
+      label: objective.label,
+      ms: phaseMs,
+      branches: numBranches,
+      conflicts: numConflicts,
+    });
+    const branchesPerSec = phaseMs > 0 ? (numBranches / phaseMs) * 1000 : 0;
+    logSolveConsole(
+      `[solver] phase ${progressBase.phase} complete · ${phaseMs.toFixed(1)}ms` +
+        ` · ${branchesPerSec.toFixed(0)} branches/s` +
+        ` · optimum ${optimum}`,
+      {
+        wallTimeSec: solver.wallTime,
+        numBranches,
+        numConflicts,
+        objectiveValue: solver.objectiveValue(),
+        bestObjectiveBound: solver.bestObjectiveBound(),
+        searchWorkers,
+        hardwareConcurrency,
+      },
+    );
     state.model.addEquality(integer.expression, optimum);
     if (index === 1) {
       addBankRepresentationLinks(state);
@@ -904,9 +963,23 @@ async function solveLexicographically(
     } else {
       installCompleteSolutionHint(state.model, solver);
     }
-    input.onProgress?.({ ...progress, status: "complete" });
+    input.onProgress?.({
+      ...progressBase,
+      status: "complete",
+      phaseMs,
+      numBranches,
+      numConflicts,
+    });
     lastSolver = solver;
   }
+
+  const totalMs = performance.now() - solveStarted;
+  const totalBranches = phaseTimings.reduce((sum, phase) => sum + phase.branches, 0);
+  logSolveConsole(
+    `[solver] done · ${totalMs.toFixed(1)}ms · ${searchWorkers} workers / ${hardwareConcurrency ?? "?"} cores` +
+      ` · ${(totalMs > 0 ? (totalBranches / totalMs) * 1000 : 0).toFixed(0)} branches/s`,
+    { totalMs, searchWorkers, hardwareConcurrency, phases: phaseTimings },
+  );
   return { solver: lastSolver, status: "OPTIMAL" };
 }
 

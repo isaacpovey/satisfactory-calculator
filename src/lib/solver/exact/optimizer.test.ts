@@ -238,7 +238,15 @@ describe("solveExactProduction", () => {
     );
 
     expect(result.proofStatus).toBe("OPTIMAL");
-    expect(progress.filter((update) => update.status === "solving")).toEqual([
+    const solving = progress.filter((update) => update.status === "solving");
+    expect(
+      solving.map(({ phase, phaseCount, label, status }) => ({
+        phase,
+        phaseCount,
+        label,
+        status,
+      })),
+    ).toEqual([
       { phase: 1, phaseCount: 6, label: "scarce raw use", status: "solving" },
       { phase: 2, phaseCount: 6, label: "weighted target output", status: "solving" },
       { phase: 3, phaseCount: 6, label: "physical machines", status: "solving" },
@@ -251,7 +259,19 @@ describe("solveExactProduction", () => {
       },
       { phase: 6, phaseCount: 6, label: "stable bank order", status: "solving" },
     ]);
+    expect(solving.every((update) => update.searchWorkers === 1)).toBe(true);
     expect(progress.filter((update) => update.status === "complete")).toHaveLength(6);
+    expect(
+      progress
+        .filter((update) => update.status === "complete")
+        .every(
+          (update) =>
+            update.searchWorkers === 1 &&
+            typeof update.phaseMs === "number" &&
+            typeof update.numBranches === "number" &&
+            typeof update.numConflicts === "number",
+        ),
+    ).toBe(true);
   });
 
   it("returns the same exact result across repeated parallel solves", async () => {
