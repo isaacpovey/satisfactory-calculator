@@ -9,6 +9,7 @@ import {
   type ExactObjectiveVector,
   type ExactOptimizerResult,
   type ExactSelectedBank,
+  type ExactSolveProgress,
 } from "./exact";
 import { buildChainGroups } from "./stage-order";
 import type {
@@ -31,6 +32,9 @@ const buildingName = new Map(buildings.map((building) => [building.id, building.
 
 export interface ExactPlannerSolveOptions {
   signal?: AbortSignal;
+  searchWorkers?: number;
+  interleaveSearch?: boolean;
+  onProgress?: (progress: ExactSolveProgress) => void;
 }
 
 interface ExpandedBank {
@@ -489,6 +493,9 @@ export async function solveExact(
     excess: input.excess.map((entry) => ({ item: entry.item, floor: entry.rate })),
     beltCapacity: maxBeltCapacity,
     signal: options.signal,
+    searchWorkers: options.searchWorkers,
+    interleaveSearch: options.interleaveSearch,
+    onProgress: options.onProgress,
   });
   if (!exact.feasible) return emptyPlannerResult(exact, maxBeltCapacity);
 

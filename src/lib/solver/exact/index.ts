@@ -27,7 +27,12 @@ export {
   type ExactBankItemRate,
   type ExactMachineBankPattern,
 } from "./bank-patterns";
-export { cancelExactSolve, optimizeExactProduction, solveExactProduction } from "./optimizer";
+export {
+  cancelExactSolve,
+  optimizeExactProduction,
+  selectSearchWorkers,
+  solveExactProduction,
+} from "./optimizer";
 export type {
   ExactExcessRate,
   ExactExcessSpec,
@@ -38,6 +43,7 @@ export type {
   ExactProofStatus,
   ExactRawRate,
   ExactSelectedBank,
+  ExactSolveProgress,
   ExactSolutionValidation,
   ExactTargetRate,
   ExactTargetSpec,

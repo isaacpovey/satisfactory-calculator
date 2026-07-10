@@ -19,6 +19,14 @@ export interface ExactExcessSpec {
   readonly rate?: RationalInput;
 }
 
+export interface ExactSolveProgress {
+  /** One-based index of the active lexicographic objective. */
+  readonly phase: number;
+  readonly phaseCount: number;
+  readonly label: string;
+  readonly status: "solving" | "complete";
+}
+
 export interface ExactOptimizerInput {
   readonly graph: ExactRecipeGraph;
   readonly rawAvailability: Partial<Record<ItemId, RationalInput>>;
@@ -26,6 +34,11 @@ export interface ExactOptimizerInput {
   readonly excess?: readonly ExactExcessSpec[];
   readonly beltCapacity: RationalInput;
   readonly signal?: AbortSignal;
+  /** Overrides the hardware-aware CP-SAT worker count. */
+  readonly searchWorkers?: number;
+  /** Uses CP-SAT's deterministic interleaved parallel search. */
+  readonly interleaveSearch?: boolean;
+  readonly onProgress?: (progress: ExactSolveProgress) => void;
 }
 
 export interface ExactSelectedBank {

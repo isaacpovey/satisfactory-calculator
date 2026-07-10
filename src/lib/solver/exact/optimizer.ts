@@ -39,6 +39,24 @@ import { validateExactSolution } from "./validation";
 const ZERO_BIGINT = BigInt(0);
 const ONE_BIGINT = BigInt(1);
 const ZERO = new Rational(ZERO_BIGINT);
+const MAX_SEARCH_WORKERS = 8;
+
+/**
+ * Uses all but one logical core for search, capped to avoid excessive browser
+ * contention. Small/unknown machines retain the single-worker fallback.
+ */
+export function selectSearchWorkers(
+  requested: number | undefined,
+  hardwareConcurrency: number | undefined = globalThis.navigator?.hardwareConcurrency,
+): number {
+  const candidate =
+    requested ??
+    (hardwareConcurrency !== undefined && hardwareConcurrency > 2
+      ? hardwareConcurrency - 1
+      : 1);
+  if (!Number.isFinite(candidate)) return 1;
+  return Math.max(1, Math.min(MAX_SEARCH_WORKERS, Math.floor(candidate)));
+}
 
 interface NormalizedTarget {
   readonly item: ItemId;
@@ -835,22 +853,30 @@ function installCanonicalBankHint(state: ModelState, solver: CpSolver): number {
 
 async function solveLexicographically(
   state: ModelState,
-  signal: AbortSignal | undefined,
+  input: ExactOptimizerInput,
 ): Promise<{
   readonly solver: CpSolver | null;
   readonly status: "OPTIMAL" | "INFEASIBLE" | "CANCELLED";
 }> {
   let lastSolver: CpSolver | null = null;
+  const searchWorkers = selectSearchWorkers(input.searchWorkers);
   for (let index = 0; index < state.objectives.length; index++) {
-    if (signal?.aborted) return { solver: lastSolver, status: "CANCELLED" };
+    if (input.signal?.aborted) return { solver: lastSolver, status: "CANCELLED" };
     const objective = state.objectives[index]!;
+    const progress = {
+      phase: index + 1,
+      phaseCount: state.objectives.length,
+      label: objective.label,
+    } as const;
+    input.onProgress?.({ ...progress, status: "solving" });
     const integer = safeIntegerExpression(objective.terms, objective.label);
     if (objective.maximize) state.model.maximize(integer.expression);
     else state.model.minimize(integer.expression);
 
     const solver = new CpSolver();
     const status = await solver.solve(state.model, {
-      numSearchWorkers: 1,
+      numWorkers: searchWorkers,
+      interleaveSearch: input.interleaveSearch ?? false,
       randomSeed: 1,
       repairHint: true,
     });
@@ -880,6 +906,7 @@ async function solveLexicographically(
     } else {
       installCompleteSolutionHint(state.model, solver);
     }
+    input.onProgress?.({ ...progress, status: "complete" });
     lastSolver = solver;
   }
   return { solver: lastSolver, status: "OPTIMAL" };
@@ -1070,7 +1097,7 @@ export async function solveExactProduction(
   };
   input.signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    const solved = await solveLexicographically(state, input.signal);
+    const solved = await solveLexicographically(state, input);
     if (solved.status !== "OPTIMAL") return emptyResult(solved.status);
     if (!solved.solver) throw new Error("OPTIMAL solve did not return a CP-SAT solution");
     const result = createResult(input, state, solved.solver, targets, excess);
