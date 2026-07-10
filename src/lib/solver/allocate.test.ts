@@ -125,7 +125,10 @@ describe("solve", () => {
       excess: [],
     });
     expect(result.feasible).toBe(true);
-    expect(result.excess.length).toBeGreaterThan(0);
+    const rod = result.targets.find((t) => t.item === "iron-rod")!;
+    const usefulExcess = result.excess.some((e) => e.rate > 0);
+    // Weight-0 targets may soak via target extra or via auto excess intermediates.
+    expect(usefulExcess || rod.extraRate > 0).toBe(true);
     const iron = result.raws.find((r) => r.item === "iron-ore")!;
     // Should soak most leftover after the 15 rod min
     expect(iron.utilization).toBeGreaterThan(0.5);
@@ -274,6 +277,27 @@ describe("solve", () => {
     10_000,
   );
 
+  it("grows weight-0 targets when they best soak leftover ore", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 400,
+        "copper-ore": 100,
+        limestone: 300,
+        coal: 120,
+      },
+      targets: [
+        { item: "steel-beam", minRate: 10, weight: 50 },
+        { item: "concrete", minRate: 5, weight: 0 },
+      ],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    const concrete = result.targets.find((t) => t.item === "concrete")!;
+    expect(concrete.extraRate).toBeGreaterThan(0);
+    const limestone = result.raws.find((r) => r.item === "limestone")!;
+    expect(limestone.utilization).toBeGreaterThan(0.5);
+  });
+
   it("maximizes useful ore before target weight tie-break", () => {
     const input = {
       rawAvailable: {
@@ -329,10 +353,12 @@ describe("solve", () => {
     expect(
       result.excess.every((e) => e.rate < 1e-6 || !e.item.includes("ingot")),
     ).toBe(true);
-    // Ore soak should land on useful parts (pipes/frames/etc.), not ingots
-    expect(
-      result.excess.some((e) => e.rate > 0 && !e.item.includes("ingot")),
-    ).toBe(true);
+    // Ore soak may land on target extra or excess intermediates — not ingots.
+    const beam = result.targets.find((t) => t.item === "steel-beam")!;
+    const usefulExcess = result.excess.some(
+      (e) => e.rate > 0 && !e.item.includes("ingot"),
+    );
+    expect(usefulExcess || beam.extraRate > 0).toBe(true);
     // Quantization may leave a tiny irreducible ingot residual, but not a
     // planned soak dump (previously ~27.5 steel ingot/min excess).
     const ingotFlow = result.items.find((i) => i.item === "steel-ingot");

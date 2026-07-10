@@ -8,10 +8,14 @@ const EPS = 1e-9;
 /** Hard cap on hill-climb iterations per phase — keeps browser solves bounded. */
 export const MAX_TARGET_ITERATIONS = 48;
 export const MAX_SOAK_ITERATIONS = 96;
+/** Wall-clock budget reserved for future early-exit (iteration caps bound solves today). */
+export const MAX_OPTIMIZATION_MS = 250;
 /** Excess sinks probed per iteration (rotating window over fillOrder). */
 export const MAX_EXCESS_PROBE = 8;
-/** Stop scanning once this many growth moves are collected. */
-const MAX_RANKED_COLLECT = 5;
+/** Stop scanning once this many excess growth candidates are collected per iteration. */
+export const MAX_RANKED_COLLECT = 5;
+/** Evaluate up to this many feasible rates from the high end of the rate ladder. */
+export const MAX_RATE_PROBES = 4;
 
 export interface PlanScore {
   /** Sum of min(useful used, available) across scarce raws (overallUtil numerator). */
@@ -75,14 +79,6 @@ export interface SinkOptimizerDeps {
     ingotId: ItemId,
   ) => number[];
   consumesItem: (product: ItemId, intermediate: ItemId) => boolean;
-  largestFittingRate: (
-    rates: number[],
-    setRate: (rate: number) => void,
-    restore: () => void,
-    available: RateMap,
-    buildSinks: () => { item: ItemId; rate: number }[],
-    maxBeltCapacity: number,
-  ) => number | null;
 }
 
 export interface OptimizeOptions {
@@ -169,38 +165,79 @@ function canUseLeftover(
   return false;
 }
 
-function estimateOreGain(
-  coeffs: Partial<Record<ItemId, number>>,
-  deltaRate: number,
-  leftover: RateMap,
+/** Largest rate in ascending `rates` that keeps the plan within available raws. */
+function largestFeasibleIndex(
+  deps: SinkOptimizerDeps,
+  kind: SinkKind,
+  itemId: ItemId,
+  current: number,
+  rates: number[],
 ): number {
-  let gain = 0;
-  for (const id of scarceRawIds) {
-    const c = coeffs[id] ?? 0;
-    if (c <= EPS) continue;
-    gain += Math.min(c * deltaRate, leftover.get(id) ?? 0);
+  const map = kind === "target" ? deps.targetExtra : deps.excessRates;
+  const candidates = rates.filter((rate) => rate > current + EPS);
+  if (candidates.length === 0) return -1;
+
+  let lo = 0;
+  let hi = candidates.length - 1;
+  let best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const rate = candidates[mid]!;
+    map.set(itemId, rate);
+    if (deps.planFitsAvailable(deps.buildSinks(), deps.available, deps.maxBeltCapacity)) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
   }
-  return gain;
+  map.set(itemId, current);
+  return best;
 }
 
-function weightBonusForMove(
+function bestImprovingMove(
   deps: SinkOptimizerDeps,
-  move: SinkMove,
-  currentRate: number,
-): number {
-  if (move.kind !== "target") return 0;
-  const t = deps.targets.find((x) => x.item === move.item);
-  if (!t || t.weight <= EPS) return 0;
-  return (move.rate - currentRate) * t.weight;
+  baseline: PlanScore,
+  kind: SinkKind,
+  itemId: ItemId,
+  current: number,
+  rates: number[],
+): ScoredCandidate | null {
+  const candidates = rates.filter((rate) => rate > current + EPS);
+  if (candidates.length === 0) return null;
+
+  const maxFeasibleIdx = largestFeasibleIndex(
+    deps,
+    kind,
+    itemId,
+    current,
+    rates,
+  );
+  if (maxFeasibleIdx < 0) return null;
+
+  let best: ScoredCandidate | null = null;
+  const probeEnd = Math.max(0, maxFeasibleIdx - MAX_RATE_PROBES + 1);
+  for (let i = maxFeasibleIdx; i >= probeEnd; i--) {
+    const rate = candidates[i]!;
+    const move: SinkMove = { kind, item: itemId, rate };
+    const scored = scoreCandidateMove(deps, baseline, move);
+    if (!scored) continue;
+    if (!best || compareScoredCandidates(scored, best) < 0) {
+      best = scored;
+    }
+  }
+
+  return best;
 }
 
-function bestGrowthMove(
+function growthMove(
   deps: SinkOptimizerDeps,
+  baseline: PlanScore,
   kind: SinkKind,
   itemId: ItemId,
   leftover: RateMap,
   exactRawCoefficients: (item: ItemId) => Partial<Record<ItemId, number>>,
-): { move: SinkMove; proxy: number; weightBonus: number } | null {
+): ScoredCandidate | null {
   const coeffs = exactRawCoefficients(itemId);
   if (!canUseLeftover(coeffs, leftover)) return null;
 
@@ -209,30 +246,16 @@ function bestGrowthMove(
   const rates = deps.collectGrowthRates(itemId, current, leftover);
   if (rates.length === 0) return null;
 
-  const best = deps.largestFittingRate(
-    rates,
-    (rate) => map.set(itemId, rate),
-    () => map.set(itemId, current),
-    deps.available,
-    deps.buildSinks,
-    deps.maxBeltCapacity,
-  );
-  if (best === null || best <= current + EPS) return null;
-
-  const move: SinkMove = { kind, item: itemId, rate: best };
-  return {
-    move,
-    proxy: estimateOreGain(coeffs, best - current, leftover),
-    weightBonus: weightBonusForMove(deps, move, current),
-  };
+  return bestImprovingMove(deps, baseline, kind, itemId, current, rates);
 }
 
-function bestIngotMove(
+function collectIngotMoves(
   deps: SinkOptimizerDeps,
+  baseline: PlanScore,
   ingotId: ItemId,
   leftoverIngot: number,
-): { move: SinkMove; proxy: number } | null {
-  let best: { move: SinkMove; proxy: number } | null = null;
+): ScoredCandidate[] {
+  const moves: ScoredCandidate[] = [];
 
   for (const item of deps.fillOrder) {
     if (!deps.consumesItem(item, ingotId)) continue;
@@ -245,52 +268,18 @@ function bestIngotMove(
     );
     if (rates.length === 0) continue;
 
-    const fit = deps.largestFittingRate(
+    const scored = bestImprovingMove(
+      deps,
+      baseline,
+      "excess",
+      item,
+      current,
       rates,
-      (rate) => deps.excessRates.set(item, rate),
-      () => deps.excessRates.set(item, current),
-      deps.available,
-      deps.buildSinks,
-      deps.maxBeltCapacity,
     );
-    if (fit === null || fit <= current + EPS) continue;
-
-    deps.excessRates.set(item, fit);
-    const after =
-      deps.leftoverIngotsFromPlan(deps.buildSinks(), deps.maxBeltCapacity).get(
-        ingotId,
-      ) ?? 0;
-    deps.excessRates.set(item, current);
-    const ingotUsed = leftoverIngot - after;
-    if (ingotUsed <= EPS) continue;
-
-    const move: SinkMove = { kind: "excess", item, rate: fit };
-    const candidate = { move, proxy: ingotUsed };
-    if (
-      !best ||
-      candidate.proxy > best.proxy + EPS ||
-      (Math.abs(candidate.proxy - best.proxy) <= EPS &&
-        moveKey([candidate.move]).localeCompare(moveKey([best.move])) < 0)
-    ) {
-      best = candidate;
-    }
+    if (scored) moves.push(scored);
   }
 
-  return best;
-}
-
-interface RankedCandidate {
-  moves: SinkMove[];
-  proxy: number;
-  weightBonus: number;
-}
-
-function compareRanked(a: RankedCandidate, b: RankedCandidate): number {
-  if (a.proxy > b.proxy + EPS) return -1;
-  if (b.proxy > a.proxy + EPS) return 1;
-  if (a.weightBonus > b.weightBonus + EPS) return -1;
-  if (b.weightBonus > a.weightBonus + EPS) return 1;
-  return moveKey(a.moves).localeCompare(moveKey(b.moves));
+  return moves;
 }
 
 function modesEnabled(
@@ -300,59 +289,127 @@ function modesEnabled(
   return modes.includes(mode);
 }
 
-function collectRankedSingles(
+function leftoverValue(
+  coeffs: Partial<Record<ItemId, number>>,
+  leftover: RateMap,
+): number {
+  let total = 0;
+  for (const id of scarceRawIds) {
+    total += (coeffs[id] ?? 0) * (leftover.get(id) ?? 0);
+  }
+  return total;
+}
+
+/** Best excess sink to probe for a single leftover raw. */
+function bestSinkForRaw(
+  rawId: ItemId,
+  fillOrder: readonly ItemId[],
+  leftover: RateMap,
+  exactRawCoefficients: (item: ItemId) => Partial<Record<ItemId, number>>,
+): ItemId | null {
+  let best: ItemId | null = null;
+  let bestValue = 0;
+  for (const item of fillOrder) {
+    const coeff = exactRawCoefficients(item)[rawId] ?? 0;
+    if (coeff <= EPS) continue;
+    const value = coeff * (leftover.get(rawId) ?? 0);
+    if (value > bestValue + EPS) {
+      bestValue = value;
+      best = item;
+    }
+  }
+  return best;
+}
+
+/**
+ * Excess probe order: one high-value sink per leftover raw, then global value
+ * ranking, then a rotating offset so later iterations reach other candidates.
+ */
+export function buildExcessProbeOrder(
   deps: SinkOptimizerDeps,
+  leftover: RateMap,
+  exactRawCoefficients: (item: ItemId) => Partial<Record<ItemId, number>>,
+  iter: number,
+): ItemId[] {
+  const seen = new Set<ItemId>();
+  const order: ItemId[] = [];
+
+  for (const rawId of scarceRawIds) {
+    if ((leftover.get(rawId) ?? 0) <= EPS) continue;
+    const item = bestSinkForRaw(
+      rawId,
+      deps.fillOrder,
+      leftover,
+      exactRawCoefficients,
+    );
+    if (item && !seen.has(item)) {
+      seen.add(item);
+      order.push(item);
+    }
+  }
+
+  const valueRanked = [...deps.fillOrder].sort((a, b) => {
+    const value = (item: ItemId) =>
+      leftoverValue(exactRawCoefficients(item), leftover);
+    return value(b) - value(a) || a.localeCompare(b);
+  });
+  for (const item of valueRanked) {
+    if (!seen.has(item)) {
+      seen.add(item);
+      order.push(item);
+    }
+  }
+
+  if (order.length <= 1) return order;
+  const offset = iter % order.length;
+  return [...order.slice(offset), ...order.slice(0, offset)];
+}
+
+/** Collect feasible single-move candidates (bounded excess window). */
+function collectCandidateMoves(
+  deps: SinkOptimizerDeps,
+  baseline: PlanScore,
   modes: readonly OptimizeMode[],
   leftover: RateMap,
   hasLeftover: boolean,
   exactRawCoefficients: (item: ItemId) => Partial<Record<ItemId, number>>,
   iter: number,
-): RankedCandidate[] {
-  const ranked: RankedCandidate[] = [];
+): ScoredCandidate[] {
+  const candidates: ScoredCandidate[] = [];
 
   if (modesEnabled(modes, "target")) {
     for (const t of deps.targets) {
-      if (t.weight <= EPS) continue;
-      const found = bestGrowthMove(
+      const scored = growthMove(
         deps,
+        baseline,
         "target",
         t.item,
         leftover,
         exactRawCoefficients,
       );
-      if (found) {
-        ranked.push({
-          moves: [found.move],
-          proxy: found.proxy,
-          weightBonus: found.weightBonus,
-        });
-      }
+      if (scored) candidates.push(scored);
     }
   }
 
   if (modesEnabled(modes, "excess") && hasLeftover) {
-    const order = deps.fillOrder;
-    const offset = order.length > 0 ? iter % order.length : 0;
+    const order = buildExcessProbeOrder(deps, leftover, exactRawCoefficients, iter);
     let probed = 0;
     let collected = 0;
     for (let k = 0; k < order.length && probed < MAX_EXCESS_PROBE; k++) {
       if (collected >= MAX_RANKED_COLLECT) break;
-      const item = order[(offset + k) % order.length]!;
+      const item = order[k]!;
       if (!canUseLeftover(exactRawCoefficients(item), leftover)) continue;
       probed++;
-      const found = bestGrowthMove(
+      const scored = growthMove(
         deps,
+        baseline,
         "excess",
         item,
         leftover,
         exactRawCoefficients,
       );
-      if (found) {
-        ranked.push({
-          moves: [found.move],
-          proxy: found.proxy,
-          weightBonus: found.weightBonus,
-        });
+      if (scored) {
+        candidates.push(scored);
         collected++;
       }
     }
@@ -365,27 +422,56 @@ function collectRankedSingles(
     );
     for (const [ingot, amount] of leftoverIngots) {
       if (amount <= EPS) continue;
-      const found = bestIngotMove(deps, ingot, amount);
-      if (found) {
-        ranked.push({
-          moves: [found.move],
-          proxy: found.proxy,
-          weightBonus: 0,
-        });
-      }
+      candidates.push(...collectIngotMoves(deps, baseline, ingot, amount));
     }
   }
 
-  ranked.sort(compareRanked);
-  return ranked;
+  return candidates;
 }
 
-function applyTopRanked(deps: SinkOptimizerDeps, ranked: RankedCandidate[]): boolean {
-  if (ranked.length === 0) return false;
-  for (const move of ranked[0]!.moves) {
-    setSinkRate(deps, move, move.rate);
+interface ScoredCandidate {
+  move: SinkMove;
+  score: PlanScore;
+}
+
+function scoreCandidateMove(
+  deps: SinkOptimizerDeps,
+  baseline: PlanScore,
+  move: SinkMove,
+): ScoredCandidate | null {
+  const restore = setSinkRate(deps, move, move.rate);
+  const score = scorePlan(deps);
+  restore();
+  if (!score) return null;
+  if (comparePlanScore(score, baseline) <= 0) return null;
+  return { move, score };
+}
+
+function compareScoredCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
+  const byScore = comparePlanScore(b.score, a.score);
+  if (byScore !== 0) return byScore;
+  return moveKey([a.move]).localeCompare(moveKey([b.move]));
+}
+
+/** Pick the move that maximizes usefulOre then weightBonus via scorePlan. */
+export function selectBestScoredMove(
+  deps: SinkOptimizerDeps,
+  baseline: PlanScore,
+  candidates: readonly SinkMove[],
+): ScoredCandidate | null {
+  let best: ScoredCandidate | null = null;
+  for (const move of candidates) {
+    const scored = scoreCandidateMove(deps, baseline, move);
+    if (!scored) continue;
+    if (!best || compareScoredCandidates(scored, best) < 0) {
+      best = scored;
+    }
   }
-  return true;
+  return best;
+}
+
+function applyMove(deps: SinkOptimizerDeps, move: SinkMove): void {
+  setSinkRate(deps, move, move.rate);
 }
 
 function hasMeaningfulLeftover(
@@ -404,9 +490,9 @@ function hasMeaningfulLeftover(
 }
 
 /**
- * Bounded hill-climb: each iteration picks the best feasible sink-rate change
- * (single or joint pair) that maximizes useful ore consumed; target weights
- * break ties only. Proxy ranking avoids full expand on every candidate.
+ * Bounded hill-climb: each iteration collects a capped set of feasible moves,
+ * scores every candidate with scorePlan, rejects infeasible or non-improving
+ * moves, and applies the one that maximizes useful ore (weight tie-break).
  */
 export function optimizeSinkRates(
   deps: SinkOptimizerDeps,
@@ -423,6 +509,9 @@ export function optimizeSinkRates(
   if (!scorePlan(deps)) return;
 
   for (let iter = 0; iter < maxIterations; iter++) {
+    const baseline = scorePlan(deps);
+    if (!baseline) break;
+
     const leftover = deps.leftoverFromPlan(
       deps.buildSinks(),
       deps.available,
@@ -432,16 +521,23 @@ export function optimizeSinkRates(
 
     if (!hasMeaningfulLeftover(deps, leftover, modes, hasLeftover)) break;
 
-    const ranked = collectRankedSingles(
+    const candidates = collectCandidateMoves(
       deps,
+      baseline,
       modes,
       leftover,
       hasLeftover,
       exactRawCoefficients,
       iter,
     );
-    if (ranked.length === 0) break;
+    if (candidates.length === 0) break;
 
-    if (!applyTopRanked(deps, ranked)) break;
+    let best = candidates[0]!;
+    for (let i = 1; i < candidates.length; i++) {
+      const scored = candidates[i]!;
+      if (compareScoredCandidates(scored, best) < 0) best = scored;
+    }
+
+    applyMove(deps, best.move);
   }
 }

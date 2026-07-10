@@ -287,33 +287,6 @@ function collectGrowthRates(
   return [...rates].sort((a, b) => a - b);
 }
 
-/** Largest rate in `rates` (ascending) that keeps the plan within `available`. */
-function largestFittingRate(
-  rates: number[],
-  setRate: (rate: number) => void,
-  restore: () => void,
-  available: RateMap,
-  buildSinks: () => { item: ItemId; rate: number }[],
-  maxBeltCapacity: number,
-): number | null {
-  let lo = 0;
-  let hi = rates.length - 1;
-  let best: number | null = null;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const rate = rates[mid]!;
-    setRate(rate);
-    if (planFitsAvailable(buildSinks(), available, maxBeltCapacity)) {
-      best = rate;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  restore();
-  return best;
-}
-
 function buildItemFlows(
   recipeCrafts: Map<string, number>,
   endRates: Map<ItemId, number>,
@@ -555,7 +528,7 @@ export function solve(input: PlannerInput): SolveResult {
     }
   };
 
-  // Phase B — target leftover growth (maximize useful ore; weights tie-break).
+  // Phase B — target leftover growth; Phase C — excess soak + ingot conversion.
   const chainRoots = [
     ...targets.map((t) => t.item),
     ...userExcess.keys(),
@@ -595,7 +568,6 @@ export function solve(input: PlannerInput): SolveResult {
     collectGrowthRates,
     collectIngotConversionRates,
     consumesItem,
-    largestFittingRate,
   };
 
   if (feasible) {
@@ -605,12 +577,10 @@ export function solve(input: PlannerInput): SolveResult {
     rebuildTargetRateMap();
   }
 
-  // Phase C0 — sync excess with destination-pack surplus before soak.
   if (feasible) {
     applyShareabilityExcess(4);
   }
 
-  // Phase C/C1 — excess soak + ingot conversion via the same hill-climb scorer.
   if (feasible) {
     optimizeSinkRates(optimizerDeps, exactRawCoefficients, {
       modes: ["excess", "ingot"],
@@ -618,7 +588,6 @@ export function solve(input: PlannerInput): SolveResult {
     rebuildTargetRateMap();
   }
 
-  // Phase D — re-sync surplus excess after optimization reshapes crafts.
   if (feasible) {
     applyShareabilityExcess(4);
   }
