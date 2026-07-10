@@ -51,9 +51,7 @@ export function selectSearchWorkers(
 ): number {
   const candidate =
     requested ??
-    (hardwareConcurrency !== undefined && hardwareConcurrency > 2
-      ? hardwareConcurrency - 1
-      : 1);
+    (hardwareConcurrency !== undefined && hardwareConcurrency > 2 ? hardwareConcurrency - 1 : 1);
   if (!Number.isFinite(candidate)) return 1;
   return Math.max(1, Math.min(MAX_SEARCH_WORKERS, Math.floor(candidate)));
 }

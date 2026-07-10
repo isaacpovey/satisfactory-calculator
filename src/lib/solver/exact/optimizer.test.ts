@@ -218,7 +218,7 @@ function bruteForceTiny(input: ExactOptimizerInput): ExactObjectiveVector {
 
 describe("solveExactProduction", () => {
   it("selects a bounded worker count while reserving a browser core", () => {
-    expect(selectSearchWorkers(undefined, undefined)).toBe(1);
+    expect(selectSearchWorkers(undefined, Number.NaN)).toBe(1);
     expect(selectSearchWorkers(undefined, 2)).toBe(1);
     expect(selectSearchWorkers(undefined, 4)).toBe(3);
     expect(selectSearchWorkers(undefined, 12)).toBe(8);
