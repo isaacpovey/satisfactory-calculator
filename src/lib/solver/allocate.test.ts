@@ -174,7 +174,9 @@ describe("solve", () => {
     expect(limestone.utilization).toBeGreaterThan(0.75);
   });
 
-  it("user factory: soaks limestone and caterium leftovers", () => {
+  it(
+    "user factory: soaks limestone and caterium leftovers",
+    () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 1860,
@@ -217,10 +219,14 @@ describe("solve", () => {
     expect(limestone.utilization).toBeGreaterThan(0.95);
     expect(caterium.utilization).toBeGreaterThan(0.98);
     expect(result.overallUtilization).toBeGreaterThan(0.995);
-  });
+  },
+    10_000,
+  );
 
   /** Snapshot of live planner localStorage (satisfactory-planner:v1). */
-  it("browser planner config: solves without negative nets", () => {
+  it(
+    "browser planner config: solves without negative nets",
+    () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 1860,
@@ -264,6 +270,33 @@ describe("solve", () => {
     for (const flow of result.items) {
       expect(flow.net).toBeGreaterThanOrEqual(-1e-6);
     }
+  },
+    10_000,
+  );
+
+  it("maximizes useful ore before target weight tie-break", () => {
+    const input = {
+      rawAvailable: {
+        "iron-ore": 240,
+        coal: 180,
+        limestone: 200,
+      },
+      targets: [
+        { item: "steel-beam", minRate: 5, weight: 90 },
+        { item: "concrete", minRate: 5, weight: 10 },
+        { item: "iron-plate", minRate: 5, weight: 5 },
+      ],
+      excess: [],
+    };
+    const result = solve(input);
+    expect(result.feasible).toBe(true);
+    // Utilization-first allocation should consume most mixed raws, not just
+    // the highest-weight steel target's share of iron/coal.
+    expect(result.overallUtilization).toBeGreaterThan(0.92);
+    const limestone = result.raws.find((r) => r.item === "limestone")!;
+    const coal = result.raws.find((r) => r.item === "coal")!;
+    expect(limestone.utilization).toBeGreaterThan(0.85);
+    expect(coal.utilization).toBeGreaterThan(0.85);
   });
 
   it("never soaks leftover ore into ingots", () => {

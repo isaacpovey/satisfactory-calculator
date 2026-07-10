@@ -21,6 +21,7 @@ import {
 } from "./constraints";
 import { buildFactoryNetwork } from "./network";
 import { quantizeItemRateBeltAware } from "./pack-banks";
+import { optimizeSinkRates } from "./optimize-sinks";
 import { reconcileProductionShares } from "./reconcile";
 import type {
   ExcessResult,
@@ -55,6 +56,44 @@ function expandSinks(
     [...merged.entries()].map(([item, rate]) => ({ item, rate })),
     { maxBeltCapacity },
   );
+}
+
+/** Ingot items/min produced but not consumed by the expanded plan. */
+function leftoverIngotsFromCrafts(
+  recipeCrafts: Map<string, number>,
+): RateMap {
+  const produced: RateMap = new Map();
+  const consumed: RateMap = new Map();
+  for (const recipe of allRecipes) {
+    const crafts = recipeCrafts.get(recipe.id) ?? 0;
+    if (crafts <= EPS) continue;
+    for (const output of recipe.outputs) {
+      if (isIngotItem(output.item)) {
+        addRate(produced, output.item, output.amount * crafts);
+      }
+    }
+    for (const input of recipe.inputs) {
+      if (isIngotItem(input.item)) {
+        addRate(consumed, input.item, input.amount * crafts);
+      }
+    }
+  }
+  const leftover: RateMap = new Map();
+  for (const [item, p] of produced) {
+    leftover.set(item, Math.max(0, p - (consumed.get(item) ?? 0)));
+  }
+  return leftover;
+}
+
+/** Ingot items/min produced but not consumed by the expanded plan. */
+function leftoverIngotsFromPlan(
+  sinks: { item: ItemId; rate: number }[],
+  maxBeltCapacity: number,
+  recipeCrafts?: Map<string, number>,
+): RateMap {
+  const crafts =
+    recipeCrafts ?? expandSinks(sinks, maxBeltCapacity).recipeCrafts;
+  return leftoverIngotsFromCrafts(crafts);
 }
 
 function planFitsAvailable(
@@ -127,35 +166,6 @@ function consumesItem(product: ItemId, intermediate: ItemId): boolean {
     }
   }
   return false;
-}
-
-/** Ingot items/min produced but not consumed by the expanded plan. */
-function leftoverIngotsFromPlan(
-  sinks: { item: ItemId; rate: number }[],
-  maxBeltCapacity: number,
-): RateMap {
-  const { recipeCrafts } = expandSinks(sinks, maxBeltCapacity);
-  const produced: RateMap = new Map();
-  const consumed: RateMap = new Map();
-  for (const recipe of allRecipes) {
-    const crafts = recipeCrafts.get(recipe.id) ?? 0;
-    if (crafts <= EPS) continue;
-    for (const output of recipe.outputs) {
-      if (isIngotItem(output.item)) {
-        addRate(produced, output.item, output.amount * crafts);
-      }
-    }
-    for (const input of recipe.inputs) {
-      if (isIngotItem(input.item)) {
-        addRate(consumed, input.item, input.amount * crafts);
-      }
-    }
-  }
-  const leftover: RateMap = new Map();
-  for (const [item, p] of produced) {
-    leftover.set(item, Math.max(0, p - (consumed.get(item) ?? 0)));
-  }
-  return leftover;
 }
 
 /** Exact intermediate items/min needed for 1 item/min of `product`. */
@@ -403,8 +413,13 @@ function overallUtil(raws: RawUtilization[]): number {
 function rawsLockedInLeftoverIngots(
   sinks: { item: ItemId; rate: number }[],
   maxBeltCapacity: number,
+  recipeCrafts?: Map<string, number>,
 ): RateMap {
-  const leftoverIngots = leftoverIngotsFromPlan(sinks, maxBeltCapacity);
+  const leftoverIngots = leftoverIngotsFromPlan(
+    sinks,
+    maxBeltCapacity,
+    recipeCrafts,
+  );
   const locked = emptyRawMap();
   for (const [ingot, rate] of leftoverIngots) {
     if (rate <= EPS) continue;
@@ -502,61 +517,17 @@ export function solve(input: PlannerInput): SolveResult {
     return sinks;
   };
 
-  // Phase B — leftover to targets independently by weight priority.
-  // Each product only competes for the raws it actually uses, so limestone
-  // can still feed Concrete when coal is already at 100%.
-  // Growth is validated against the full expanded plan (not continuous coeffs),
-  // because per-stage machine quantization makes delta costs underestimate.
-  if (feasible) {
-    const weighted = targets
-      .filter((t) => t.weight > EPS)
-      .sort((a, b) => b.weight - a.weight || a.item.localeCompare(b.item));
-
-    if (weighted.length > 0) {
-      let guard = 0;
-      while (guard++ < 200) {
-        let progressed = false;
-        for (const t of weighted) {
-          const current = targetExtra.get(t.item) ?? 0;
-          const leftover = leftoverFromPlan(
-            buildSinks(),
-            available,
-            maxBeltCapacity,
-          );
-          const coeffs = exactRawCoefficients(t.item);
-          const canUseLeftover = (Object.keys(coeffs) as ItemId[]).some(
-            (r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS,
-          );
-          if (!canUseLeftover) continue;
-
-          const rates = collectGrowthRates(t.item, current, leftover);
-          if (rates.length === 0) continue;
-
-          const best = largestFittingRate(
-            rates,
-            (rate) => targetExtra.set(t.item, rate),
-            () => targetExtra.set(t.item, current),
-            available,
-            buildSinks,
-            maxBeltCapacity,
-          );
-          if (best !== null && best > current + EPS) {
-            targetExtra.set(t.item, best);
-            progressed = true;
-          }
-        }
-        if (!progressed) break;
-      }
-    }
-  }
-
   const targetRateMap = new Map<ItemId, number>();
-  for (const t of targets) {
-    const plannedMin = plannedMins.get(t.item) ?? 0;
-    const extra = targetExtra.get(t.item) ?? 0;
-    const total = plannedMin + extra;
-    if (total > EPS) targetRateMap.set(t.item, total);
-  }
+  const rebuildTargetRateMap = (): void => {
+    targetRateMap.clear();
+    for (const t of targets) {
+      const plannedMin = plannedMins.get(t.item) ?? 0;
+      const extra = targetExtra.get(t.item) ?? 0;
+      const total = plannedMin + extra;
+      if (total > EPS) targetRateMap.set(t.item, total);
+    }
+  };
+  rebuildTargetRateMap();
 
   const applyShareabilityExcess = (maxIter: number): void => {
     let plan = expandSinks(buildSinks(), maxBeltCapacity);
@@ -584,13 +555,7 @@ export function solve(input: PlannerInput): SolveResult {
     }
   };
 
-  // Phase C0 — sync excess with destination-pack surplus before soak.
-  if (feasible) {
-    applyShareabilityExcess(4);
-  }
-
-  // Phase C — complexity-first auto excess to soak leftover raws.
-  // Ingots are never soak sinks; leftover ore must become useful parts.
+  // Phase B — target leftover growth (maximize useful ore; weights tie-break).
   const chainRoots = [
     ...targets.map((t) => t.item),
     ...userExcess.keys(),
@@ -613,106 +578,47 @@ export function solve(input: PlannerInput): SolveResult {
     (a, b) => complexityScore(b) - complexityScore(a),
   );
 
+  const optimizerDeps = {
+    available,
+    maxBeltCapacity,
+    targets,
+    soakCandidates: [...soakCandidates],
+    fillOrder,
+    targetExtra,
+    excessRates,
+    buildSinks,
+    planFitsAvailable,
+    leftoverFromPlan,
+    expandSinks,
+    rawsLockedInLeftoverIngots,
+    leftoverIngotsFromPlan,
+    collectGrowthRates,
+    collectIngotConversionRates,
+    consumesItem,
+    largestFittingRate,
+  };
+
   if (feasible) {
-    let guard = 0;
-    while (guard++ < 400) {
-      let progressed = false;
-      const leftover = leftoverFromPlan(
-        buildSinks(),
-        available,
-        maxBeltCapacity,
-      );
-      const hasLeftover = [...leftover.values()].some((v) => v > EPS);
-      if (!hasLeftover) break;
-
-      for (const item of fillOrder) {
-        const coeffs = exactRawCoefficients(item);
-        const canUseLeftover = (Object.keys(coeffs) as ItemId[]).some(
-          (r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS,
-        );
-        if (!canUseLeftover) continue;
-
-        const current = excessRates.get(item) ?? 0;
-        const rates = collectGrowthRates(item, current, leftover);
-        if (rates.length === 0) continue;
-
-        const best = largestFittingRate(
-          rates,
-          (rate) => excessRates.set(item, rate),
-          () => excessRates.set(item, current),
-          available,
-          buildSinks,
-          maxBeltCapacity,
-        );
-        if (best !== null && best > current + EPS) {
-          excessRates.set(item, best);
-          progressed = true;
-          break;
-        }
-      }
-      if (!progressed) break;
-    }
+    optimizeSinkRates(optimizerDeps, exactRawCoefficients, {
+      modes: ["target"],
+    });
+    rebuildTargetRateMap();
   }
 
-  // Phase C1 — convert leftover ingot production into downstream parts.
-  // Machine quantization / ore soak can leave unused ingots; never leave
-  // those as storage overflow when a useful consumer can take them.
+  // Phase C0 — sync excess with destination-pack surplus before soak.
   if (feasible) {
-    let guard = 0;
-    while (guard++ < 80) {
-      const leftoverIngots = leftoverIngotsFromPlan(
-        buildSinks(),
-        maxBeltCapacity,
-      );
-      const ingotIdsWithLeftover = [...leftoverIngots.entries()]
-        .filter(([, rate]) => rate > EPS)
-        .map(([id]) => id)
-        .sort(
-          (a, b) =>
-            (leftoverIngots.get(b) ?? 0) - (leftoverIngots.get(a) ?? 0) ||
-            a.localeCompare(b),
-        );
-      if (ingotIdsWithLeftover.length === 0) break;
-
-      let progressed = false;
-      for (const ingot of ingotIdsWithLeftover) {
-        const before = leftoverIngots.get(ingot) ?? 0;
-        for (const item of fillOrder) {
-          if (!consumesItem(item, ingot)) continue;
-          const current = excessRates.get(item) ?? 0;
-          const rates = collectIngotConversionRates(
-            item,
-            current,
-            before,
-            ingot,
-          );
-          if (rates.length === 0) continue;
-
-          for (const rate of rates) {
-            excessRates.set(item, rate);
-            if (!planFitsAvailable(buildSinks(), available, maxBeltCapacity)) {
-              excessRates.set(item, current);
-              continue;
-            }
-            const after =
-              leftoverIngotsFromPlan(buildSinks(), maxBeltCapacity).get(
-                ingot,
-              ) ?? 0;
-            if (after + EPS < before) {
-              progressed = true;
-              break;
-            }
-            excessRates.set(item, current);
-          }
-          if (progressed) break;
-        }
-        if (progressed) break;
-      }
-      if (!progressed) break;
-    }
+    applyShareabilityExcess(4);
   }
 
-  // Phase D — re-sync surplus excess after soak reshapes crafts/destinations.
+  // Phase C/C1 — excess soak + ingot conversion via the same hill-climb scorer.
+  if (feasible) {
+    optimizeSinkRates(optimizerDeps, exactRawCoefficients, {
+      modes: ["excess", "ingot"],
+    });
+    rebuildTargetRateMap();
+  }
+
+  // Phase D — re-sync surplus excess after optimization reshapes crafts.
   if (feasible) {
     applyShareabilityExcess(4);
   }
