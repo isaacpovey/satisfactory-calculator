@@ -67,11 +67,7 @@ export interface SinkOptimizerDeps {
     maxBeltCapacity: number,
     recipeCrafts?: Map<string, number>,
   ) => RateMap;
-  collectGrowthRates: (
-    itemId: ItemId,
-    current: number,
-    leftover: RateMap,
-  ) => number[];
+  collectGrowthRates: (itemId: ItemId, current: number, leftover: RateMap) => number[];
   collectIngotConversionRates: (
     itemId: ItemId,
     current: number,
@@ -144,21 +140,14 @@ function moveKey(moves: SinkMove[]): string {
     .join("|");
 }
 
-function setSinkRate(
-  deps: SinkOptimizerDeps,
-  move: SinkMove,
-  rate: number,
-): () => void {
+function setSinkRate(deps: SinkOptimizerDeps, move: SinkMove, rate: number): () => void {
   const map = move.kind === "target" ? deps.targetExtra : deps.excessRates;
   const prev = map.get(move.item) ?? 0;
   map.set(move.item, rate);
   return () => map.set(move.item, prev);
 }
 
-function canUseLeftover(
-  coeffs: Partial<Record<ItemId, number>>,
-  leftover: RateMap,
-): boolean {
+function canUseLeftover(coeffs: Partial<Record<ItemId, number>>, leftover: RateMap): boolean {
   for (const id of scarceRawIds) {
     if ((leftover.get(id) ?? 0) > EPS && (coeffs[id] ?? 0) > EPS) return true;
   }
@@ -206,13 +195,7 @@ function bestImprovingMove(
   const candidates = rates.filter((rate) => rate > current + EPS);
   if (candidates.length === 0) return null;
 
-  const maxFeasibleIdx = largestFeasibleIndex(
-    deps,
-    kind,
-    itemId,
-    current,
-    rates,
-  );
+  const maxFeasibleIdx = largestFeasibleIndex(deps, kind, itemId, current, rates);
   if (maxFeasibleIdx < 0) return null;
 
   let best: ScoredCandidate | null = null;
@@ -260,39 +243,21 @@ function collectIngotMoves(
   for (const item of deps.fillOrder) {
     if (!deps.consumesItem(item, ingotId)) continue;
     const current = deps.excessRates.get(item) ?? 0;
-    const rates = deps.collectIngotConversionRates(
-      item,
-      current,
-      leftoverIngot,
-      ingotId,
-    );
+    const rates = deps.collectIngotConversionRates(item, current, leftoverIngot, ingotId);
     if (rates.length === 0) continue;
 
-    const scored = bestImprovingMove(
-      deps,
-      baseline,
-      "excess",
-      item,
-      current,
-      rates,
-    );
+    const scored = bestImprovingMove(deps, baseline, "excess", item, current, rates);
     if (scored) moves.push(scored);
   }
 
   return moves;
 }
 
-function modesEnabled(
-  modes: readonly OptimizeMode[],
-  mode: OptimizeMode,
-): boolean {
+function modesEnabled(modes: readonly OptimizeMode[], mode: OptimizeMode): boolean {
   return modes.includes(mode);
 }
 
-function leftoverValue(
-  coeffs: Partial<Record<ItemId, number>>,
-  leftover: RateMap,
-): number {
+function leftoverValue(coeffs: Partial<Record<ItemId, number>>, leftover: RateMap): number {
   let total = 0;
   for (const id of scarceRawIds) {
     total += (coeffs[id] ?? 0) * (leftover.get(id) ?? 0);
@@ -336,12 +301,7 @@ export function buildExcessProbeOrder(
 
   for (const rawId of scarceRawIds) {
     if ((leftover.get(rawId) ?? 0) <= EPS) continue;
-    const item = bestSinkForRaw(
-      rawId,
-      deps.fillOrder,
-      leftover,
-      exactRawCoefficients,
-    );
+    const item = bestSinkForRaw(rawId, deps.fillOrder, leftover, exactRawCoefficients);
     if (item && !seen.has(item)) {
       seen.add(item);
       order.push(item);
@@ -349,8 +309,7 @@ export function buildExcessProbeOrder(
   }
 
   const valueRanked = [...deps.fillOrder].sort((a, b) => {
-    const value = (item: ItemId) =>
-      leftoverValue(exactRawCoefficients(item), leftover);
+    const value = (item: ItemId) => leftoverValue(exactRawCoefficients(item), leftover);
     return value(b) - value(a) || a.localeCompare(b);
   });
   for (const item of valueRanked) {
@@ -379,14 +338,7 @@ function collectCandidateMoves(
 
   if (modesEnabled(modes, "target")) {
     for (const t of deps.targets) {
-      const scored = growthMove(
-        deps,
-        baseline,
-        "target",
-        t.item,
-        leftover,
-        exactRawCoefficients,
-      );
+      const scored = growthMove(deps, baseline, "target", t.item, leftover, exactRawCoefficients);
       if (scored) candidates.push(scored);
     }
   }
@@ -400,14 +352,7 @@ function collectCandidateMoves(
       const item = order[k]!;
       if (!canUseLeftover(exactRawCoefficients(item), leftover)) continue;
       probed++;
-      const scored = growthMove(
-        deps,
-        baseline,
-        "excess",
-        item,
-        leftover,
-        exactRawCoefficients,
-      );
+      const scored = growthMove(deps, baseline, "excess", item, leftover, exactRawCoefficients);
       if (scored) {
         candidates.push(scored);
         collected++;
@@ -416,10 +361,7 @@ function collectCandidateMoves(
   }
 
   if (modesEnabled(modes, "ingot")) {
-    const leftoverIngots = deps.leftoverIngotsFromPlan(
-      deps.buildSinks(),
-      deps.maxBeltCapacity,
-    );
+    const leftoverIngots = deps.leftoverIngotsFromPlan(deps.buildSinks(), deps.maxBeltCapacity);
     for (const [ingot, amount] of leftoverIngots) {
       if (amount <= EPS) continue;
       candidates.push(...collectIngotMoves(deps, baseline, ingot, amount));
@@ -476,16 +418,13 @@ function applyMove(deps: SinkOptimizerDeps, move: SinkMove): void {
 
 function hasMeaningfulLeftover(
   deps: SinkOptimizerDeps,
-  leftover: RateMap,
+  _leftover: RateMap,
   modes: readonly OptimizeMode[],
   hasRawLeftover: boolean,
 ): boolean {
   if (hasRawLeftover) return true;
   if (!modesEnabled(modes, "ingot")) return false;
-  const leftoverIngots = deps.leftoverIngotsFromPlan(
-    deps.buildSinks(),
-    deps.maxBeltCapacity,
-  );
+  const leftoverIngots = deps.leftoverIngotsFromPlan(deps.buildSinks(), deps.maxBeltCapacity);
   return [...leftoverIngots.values()].some((v) => v > EPS);
 }
 
@@ -502,9 +441,7 @@ export function optimizeSinkRates(
   const modes = options.modes ?? (["target", "excess", "ingot"] as const);
   const maxIterations =
     options.maxIterations ??
-    (modes.length === 1 && modes[0] === "target"
-      ? MAX_TARGET_ITERATIONS
-      : MAX_SOAK_ITERATIONS);
+    (modes.length === 1 && modes[0] === "target" ? MAX_TARGET_ITERATIONS : MAX_SOAK_ITERATIONS);
 
   if (!scorePlan(deps)) return;
 
@@ -512,11 +449,7 @@ export function optimizeSinkRates(
     const baseline = scorePlan(deps);
     if (!baseline) break;
 
-    const leftover = deps.leftoverFromPlan(
-      deps.buildSinks(),
-      deps.available,
-      deps.maxBeltCapacity,
-    );
+    const leftover = deps.leftoverFromPlan(deps.buildSinks(), deps.available, deps.maxBeltCapacity);
     const hasLeftover = [...leftover.values()].some((v) => v > EPS);
 
     if (!hasMeaningfulLeftover(deps, leftover, modes, hasLeftover)) break;

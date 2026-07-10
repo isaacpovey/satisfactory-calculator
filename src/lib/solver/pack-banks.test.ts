@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getRecipeForProduct } from "@/data/recipes";
-import {
-  isSplitterFriendlyCount,
-  totalEffectiveMachines,
-} from "./constraints";
+import { isSplitterFriendlyCount, totalEffectiveMachines } from "./constraints";
 import { buildOutputMerges, packDestinationOutputs } from "./network";
-import {
-  packMachineBanks,
-  recipeBeltLoadPerMachine,
-} from "./pack-banks";
+import { packMachineBanks, recipeBeltLoadPerMachine } from "./pack-banks";
 
 describe("recipeBeltLoadPerMachine", () => {
   it("uses the hotter of input/output for iron plate", () => {
@@ -24,12 +18,10 @@ describe("packMachineBanks", () => {
     const banks = packMachineBanks(recipe, 5.25, { maxBeltCapacity: 270 });
     expect(totalEffectiveMachines(banks)).toBeGreaterThanOrEqual(5.25 - 1e-9);
     for (const b of banks) {
-      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(
-        true,
+      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(true);
+      expect(recipeBeltLoadPerMachine(recipe, b.clock) * b.machines).toBeLessThanOrEqual(
+        270 + 1e-9,
       );
-      expect(
-        recipeBeltLoadPerMachine(recipe, b.clock) * b.machines,
-      ).toBeLessThanOrEqual(270 + 1e-9);
     }
   });
 
@@ -39,12 +31,10 @@ describe("packMachineBanks", () => {
     const banks = packMachineBanks(recipe, 7, { maxBeltCapacity: 120 });
     expect(banks.length).toBeGreaterThan(1);
     for (const b of banks) {
-      expect(
-        recipeBeltLoadPerMachine(recipe, b.clock) * b.machines,
-      ).toBeLessThanOrEqual(120 + 1e-9);
-      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(
-        true,
+      expect(recipeBeltLoadPerMachine(recipe, b.clock) * b.machines).toBeLessThanOrEqual(
+        120 + 1e-9,
       );
+      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(true);
     }
     expect(totalEffectiveMachines(banks)).toBeGreaterThanOrEqual(7 - 1e-9);
   });
@@ -53,9 +43,7 @@ describe("packMachineBanks", () => {
     const recipe = getRecipeForProduct("iron-rod")!;
     const banks = packMachineBanks(recipe, 5, { maxBeltCapacity: 270 });
     for (const b of banks) {
-      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(
-        true,
-      );
+      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(true);
     }
     expect(totalEffectiveMachines(banks)).toBeGreaterThanOrEqual(5 - 1e-9);
   });
@@ -66,13 +54,9 @@ describe("packMachineBanks", () => {
     const banks = packMachineBanks(recipe, 10.5, { maxBeltCapacity: 270 });
     expect(totalEffectiveMachines(banks)).toBeGreaterThanOrEqual(10.5 - 1e-9);
     for (const b of banks) {
-      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(
-        true,
-      );
+      expect(b.machines === 1 || isSplitterFriendlyCount(b.machines)).toBe(true);
     }
-    const underclockMulti = banks.filter(
-      (b) => b.machines > 1 && b.clock < 1 - 1e-9,
-    );
+    const underclockMulti = banks.filter((b) => b.machines > 1 && b.clock < 1 - 1e-9);
     expect(underclockMulti).toHaveLength(0);
     const singletons = banks.filter((b) => b.machines === 1);
     expect(singletons.some((b) => Math.abs(b.clock - 0.5) < 1e-9)).toBe(true);
@@ -122,9 +106,7 @@ describe("packDestinationOutputs", () => {
       ],
       270,
     );
-    const productionLanes = outputMerges.filter(
-      (m) => m.to && m.to.kind !== "excess",
-    );
+    const productionLanes = outputMerges.filter((m) => m.to && m.to.kind !== "excess");
     const destKeys = productionLanes.map((m) => `${m.to!.kind}:${m.to!.id}`);
     // Each production lane is sole-destination
     expect(new Set(destKeys).size).toBeGreaterThanOrEqual(3);

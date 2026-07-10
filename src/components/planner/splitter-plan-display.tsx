@@ -89,9 +89,7 @@ export function SplitterPlanDisplay({
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      {prefix ? (
-        <span className="text-[11px] text-muted-foreground">{prefix}</span>
-      ) : null}
+      {prefix ? <span className="text-[11px] text-muted-foreground">{prefix}</span> : null}
       <div className="flex flex-wrap items-center gap-1.5">
         {variant === "output" ? (
           <span className="text-[11px] text-muted-foreground">Take</span>

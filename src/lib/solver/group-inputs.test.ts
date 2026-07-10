@@ -44,18 +44,12 @@ describe("splitterInputStageRates", () => {
     const stages = splitterInputStageRates(180, plan);
     expect(stages.map((s) => s.rate)).toEqual([180, 90, 30]);
     expect(stages.map((s) => s.lanes)).toEqual([1, 2, 6]);
-    expect(stages.map((s) => s.label)).toEqual([
-      "Belt in",
-      "After 1/2",
-      "After 1/3",
-    ]);
+    expect(stages.map((s) => s.label)).toEqual(["Belt in", "After 1/2", "After 1/3"]);
   });
 
   it("returns single stage for merge-only", () => {
     const plan = inputSplitForGroup(1);
-    expect(splitterInputStageRates(30, plan)).toEqual([
-      { label: "Belt in", rate: 30, lanes: 1 },
-    ]);
+    expect(splitterInputStageRates(30, plan)).toEqual([{ label: "Belt in", rate: 30, lanes: 1 }]);
   });
 });
 

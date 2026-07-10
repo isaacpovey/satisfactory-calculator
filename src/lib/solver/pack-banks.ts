@@ -26,10 +26,7 @@ export interface PackBanksOptions {
  * Max items/min this recipe moves on any single belt for one machine @ clock.
  * Caps banks so both primary output and every solid input fit the belt.
  */
-export function recipeBeltLoadPerMachine(
-  recipe: Recipe,
-  clock: number,
-): number {
+export function recipeBeltLoadPerMachine(recipe: Recipe, clock: number): number {
   const cycles = recipeCyclesPerMinute(recipe) * clock;
   let max = 0;
   for (const output of recipe.outputs) {
@@ -41,20 +38,11 @@ export function recipeBeltLoadPerMachine(
   return max;
 }
 
-function bankFitsBelt(
-  recipe: Recipe,
-  machines: number,
-  clock: number,
-  maxBelt: number,
-): boolean {
+function bankFitsBelt(recipe: Recipe, machines: number, clock: number, maxBelt: number): boolean {
   return recipeBeltLoadPerMachine(recipe, clock) * machines <= maxBelt + EPS;
 }
 
-function maxMachinesOnBelt(
-  recipe: Recipe,
-  clock: number,
-  maxBelt: number,
-): number {
+function maxMachinesOnBelt(recipe: Recipe, clock: number, maxBelt: number): number {
   const per = recipeBeltLoadPerMachine(recipe, clock);
   if (per <= EPS) return Number.POSITIVE_INFINITY;
   return Math.floor(maxBelt / per + EPS);
@@ -65,9 +53,7 @@ function fullSpeedFriendlyMachines(groups: MachineConfig[]): number {
   return groups.reduce(
     (s, g) =>
       s +
-      (g.clock >= 1 - EPS &&
-      g.machines > 1 &&
-      isSplitterFriendlyCount(g.machines)
+      (g.clock >= 1 - EPS && g.machines > 1 && isSplitterFriendlyCount(g.machines)
         ? g.machines
         : 0),
     0,
@@ -76,9 +62,7 @@ function fullSpeedFriendlyMachines(groups: MachineConfig[]): number {
 
 /** Multi-machine banks that are underclocked (awkward equal-split at partial clock). */
 function underclockMultiBanks(groups: MachineConfig[]): number {
-  return groups.filter(
-    (g) => g.machines > 1 && g.clock < 1 - EPS,
-  ).length;
+  return groups.filter((g) => g.machines > 1 && g.clock < 1 - EPS).length;
 }
 
 /**
@@ -118,23 +102,15 @@ function isBetterPack(
   if (cMach < bMach) return true;
   if (cMach > bMach) return false;
 
-  const cClock =
-    cMach > 0
-      ? candidate.reduce((s, g) => s + g.clock * g.machines, 0) / cMach
-      : 0;
-  const bClock =
-    bMach > 0
-      ? best.reduce((s, g) => s + g.clock * g.machines, 0) / bMach
-      : 0;
+  const cClock = cMach > 0 ? candidate.reduce((s, g) => s + g.clock * g.machines, 0) / cMach : 0;
+  const bClock = bMach > 0 ? best.reduce((s, g) => s + g.clock * g.machines, 0) / bMach : 0;
   return cClock > bClock + EPS;
 }
 
 function sortBanks(groups: MachineConfig[]): MachineConfig[] {
   return [...groups].sort(
     (a, b) =>
-      b.clock - a.clock ||
-      b.machines - a.machines ||
-      b.effectiveMachines - a.effectiveMachines,
+      b.clock - a.clock || b.machines - a.machines || b.effectiveMachines - a.effectiveMachines,
   );
 }
 
@@ -156,9 +132,7 @@ export function packMachineBanks(
   const splitBaseline = splitGroupsToBelt(recipe, baseline, maxBelt);
   if (
     totalEffectiveMachines(splitBaseline) + EPS >= effective &&
-    splitBaseline.every((g) =>
-      bankFitsBelt(recipe, g.machines, g.clock, maxBelt),
-    )
+    splitBaseline.every((g) => bankFitsBelt(recipe, g.machines, g.clock, maxBelt))
   ) {
     // Still search for a better belt-aware pack; keep as initial best.
   }
@@ -218,10 +192,7 @@ export function packMachineBanks(
     const floorEff = Math.floor(effective + EPS);
     const remFrac = effective - floorEff;
     const fullPack = greedyFullSpeedOnly(recipe, floorEff, maxBelt);
-    if (
-      totalEffectiveMachines(fullPack) + EPS >= floorEff &&
-      remFrac > EPS
-    ) {
+    if (totalEffectiveMachines(fullPack) + EPS >= floorEff && remFrac > EPS) {
       const remGroups = findBeltRemainderGroups(recipe, remFrac, maxBelt);
       if (remGroups.length > 0) consider([...fullPack, ...remGroups]);
     } else if (remFrac <= EPS && fullPack.length > 0) {
@@ -235,9 +206,7 @@ export function packMachineBanks(
       if (!bankFitsBelt(recipe, machines, clock, maxBelt)) continue;
       const achieved = machines * clock;
       if (achieved + EPS < effective) continue;
-      consider([
-        { machines, clock, effectiveMachines: achieved },
-      ]);
+      consider([{ machines, clock, effectiveMachines: achieved }]);
     }
   }
 
@@ -303,11 +272,9 @@ function findBeltRemainderGroups(
       if (
         !best ||
         candidate.effectiveMachines < best.effectiveMachines - EPS ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines < best.machines) ||
-        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <=
-          EPS &&
+        (Math.abs(candidate.effectiveMachines - best.effectiveMachines) <= EPS &&
           candidate.machines === best.machines &&
           candidate.clock > best.clock)
       ) {
@@ -319,11 +286,7 @@ function findBeltRemainderGroups(
 }
 
 /** Pack only full-speed friendly (+ singleton @100%) banks covering `effective`. */
-function greedyFullSpeedOnly(
-  recipe: Recipe,
-  effective: number,
-  maxBelt: number,
-): MachineConfig[] {
+function greedyFullSpeedOnly(recipe: Recipe, effective: number, maxBelt: number): MachineConfig[] {
   const groups: MachineConfig[] = [];
   let remaining = effective;
   const fullMax = maxMachinesOnBelt(recipe, 1, maxBelt);
@@ -356,17 +319,11 @@ function greedyFullSpeedOnly(
   return groups;
 }
 
-function greedyPack(
-  recipe: Recipe,
-  effective: number,
-  maxBelt: number,
-): MachineConfig[] {
+function greedyPack(recipe: Recipe, effective: number, maxBelt: number): MachineConfig[] {
   const groups: MachineConfig[] = [];
   let remaining = effective;
   const fullMax = maxMachinesOnBelt(recipe, 1, maxBelt);
-  const sizes = [...SPLITTER_FRIENDLY_COUNTS]
-    .filter((n) => n <= fullMax)
-    .sort((a, b) => b - a);
+  const sizes = [...SPLITTER_FRIENDLY_COUNTS].filter((n) => n <= fullMax).sort((a, b) => b - a);
 
   while (remaining > EPS) {
     let placed = false;
@@ -437,7 +394,7 @@ function splitGroupsToBelt(
     while (leftMachines > 0) {
       const size =
         friendlyMax.find((n) => n <= leftMachines) ??
-        (leftMachines === 1 ? 1 : friendlyMax[friendlyMax.length - 1] ?? 1);
+        (leftMachines === 1 ? 1 : (friendlyMax[friendlyMax.length - 1] ?? 1));
       const take = Math.min(size, leftMachines);
       if (!isSplitterFriendlyCount(take) && take !== 1) {
         // Peel ones
@@ -460,11 +417,7 @@ function splitGroupsToBelt(
   return out;
 }
 
-function fallbackOnePerBelt(
-  recipe: Recipe,
-  effective: number,
-  maxBelt: number,
-): MachineConfig[] {
+function fallbackOnePerBelt(recipe: Recipe, effective: number, maxBelt: number): MachineConfig[] {
   const groups: MachineConfig[] = [];
   let left = effective;
   while (left > EPS) {
@@ -473,8 +426,7 @@ function fallbackOnePerBelt(
       if (!bankFitsBelt(recipe, 1, clock, maxBelt)) continue;
       if (clock + EPS < left && clock < 1 - EPS) continue;
       const use = Math.min(clock, Math.ceil(left / CLOCK_STEP) * CLOCK_STEP);
-      const c =
-        ALLOWED_CLOCKS.find((x) => x + EPS >= Math.min(left, use)) ?? 0.25;
+      const c = ALLOWED_CLOCKS.find((x) => x + EPS >= Math.min(left, use)) ?? 0.25;
       if (!bankFitsBelt(recipe, 1, c, maxBelt)) continue;
       groups.push({ machines: 1, clock: c, effectiveMachines: c });
       left -= c;

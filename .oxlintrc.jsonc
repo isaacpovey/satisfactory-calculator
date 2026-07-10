@@ -1,0 +1,64 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "nextjs",
+    "jsx-a11y",
+    "import",
+    "vitest",
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "warn",
+  },
+  "options": {
+    "typeAware": true,
+  },
+  "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports",
+        "fixStyle": "separate-type-imports",
+      },
+    ],
+    "eslint/prefer-const": "error",
+    "eslint/no-param-reassign": ["error", { "props": true }],
+    "unicorn/prefer-spread": "error",
+    "unicorn/no-useless-spread": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/jsx-key": "error",
+    "react/react-compiler": "warn",
+    "react/react-in-jsx-scope": "off",
+    "no-console": "warn",
+  },
+  "overrides": [
+    {
+      "files": ["src/lib/solver/**/*.ts"],
+      "rules": {
+        "eslint/no-plusplus": "off",
+      },
+    },
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "no-console": "off",
+        "vitest/no-conditional-expect": "off",
+      },
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "jsx-a11y/label-has-associated-control": "off",
+      },
+    },
+  ],
+}

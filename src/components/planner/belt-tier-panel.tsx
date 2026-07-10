@@ -24,9 +24,7 @@ export function BeltTierPanel({ maxBeltCapacity, onChange }: BeltTierPanelProps)
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
       <div>
-        <h2 className="font-heading text-sm font-semibold tracking-tight">
-          Max belt tier
-        </h2>
+        <h2 className="font-heading text-sm font-semibold tracking-tight">Max belt tier</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Machine banks and merges stay within this conveyor capacity.
         </p>

@@ -36,38 +36,25 @@ function proxyRankScore(
   for (const [raw, c] of Object.entries(coeffs)) {
     const coeff = c ?? 0;
     if (coeff <= 0) continue;
-    proxy += Math.min(
-      coeff * (move.rate - currentRate),
-      leftover.get(raw as ItemId) ?? 0,
-    );
+    proxy += Math.min(coeff * (move.rate - currentRate), leftover.get(raw as ItemId) ?? 0);
   }
-  const weightBonus =
-    move.kind === "target" ? (move.rate - currentRate) * weight : 0;
+  const weightBonus = move.kind === "target" ? (move.rate - currentRate) * weight : 0;
   return { proxy, weightBonus };
 }
 
 describe("optimize-sinks scoring", () => {
   it("ranks useful ore ahead of weight bonus", () => {
     expect(
-      comparePlanScore(
-        { usefulOre: 200, weightBonus: 0 },
-        { usefulOre:  199, weightBonus: 10_000 },
-      ),
+      comparePlanScore({ usefulOre: 200, weightBonus: 0 }, { usefulOre: 199, weightBonus: 10_000 }),
     ).toBe(1);
   });
 
   it("uses weight bonus only as a tie-breaker", () => {
     expect(
-      comparePlanScore(
-        { usefulOre: 100, weightBonus: 50 },
-        { usefulOre: 100, weightBonus: 40 },
-      ),
+      comparePlanScore({ usefulOre: 100, weightBonus: 50 }, { usefulOre: 100, weightBonus: 40 }),
     ).toBe(1);
     expect(
-      comparePlanScore(
-        { usefulOre: 100, weightBonus: 40 },
-        { usefulOre: 100, weightBonus: 50 },
-      ),
+      comparePlanScore({ usefulOre: 100, weightBonus: 40 }, { usefulOre: 100, weightBonus: 50 }),
     ).toBe(-1);
   });
 });
@@ -122,9 +109,7 @@ describe("optimize-sinks excess probe order", () => {
       const value = (item: ItemId) => {
         const c = exactRawCoefficients(item);
         return (
-          (c["iron-ore"] ?? 0) * 1000 +
-          (c.limestone ?? 0) * 300 +
-          (c["caterium-ore"] ?? 0) * 60
+          (c["iron-ore"] ?? 0) * 1000 + (c.limestone ?? 0) * 300 + (c["caterium-ore"] ?? 0) * 60
         );
       };
       return value(b) - value(a);
@@ -196,20 +181,8 @@ describe("optimize-sinks move selection", () => {
     const screwMove: SinkMove = { kind: "target", item: "screw", rate: 10 };
     const rodMove: SinkMove = { kind: "target", item: "iron-rod", rate: 10 };
 
-    const screwProxy = proxyRankScore(
-      screwMove,
-      leftover,
-      coeffs.screw!,
-      100,
-      0,
-    );
-    const rodProxy = proxyRankScore(
-      rodMove,
-      leftover,
-      coeffs["iron-rod"]!,
-      1,
-      0,
-    );
+    const screwProxy = proxyRankScore(screwMove, leftover, coeffs.screw!, 100, 0);
+    const rodProxy = proxyRankScore(rodMove, leftover, coeffs["iron-rod"]!, 1, 0);
     expect(screwProxy.proxy).toBeGreaterThan(rodProxy.proxy);
     expect(screwProxy.weightBonus).toBeGreaterThan(rodProxy.weightBonus);
 

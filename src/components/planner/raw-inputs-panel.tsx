@@ -31,15 +31,9 @@ export function RawInputsPanel({ values, onChange }: RawInputsPanelProps) {
       <div className="grid gap-3">
         {scarceRawIds.map((id) => (
           <div key={id} className="grid gap-1.5">
-            <Label
-              htmlFor={`raw-${id}`}
-              className="flex items-center gap-2 text-sm"
-            >
+            <Label htmlFor={`raw-${id}`} className="flex items-center gap-2 text-sm">
               <span
-                className={cn(
-                  "size-2 rounded-full",
-                  ORE_SWATCH[id] ?? "bg-primary",
-                )}
+                className={cn("size-2 rounded-full", ORE_SWATCH[id] ?? "bg-primary")}
                 aria-hidden
               />
               {itemById[id].name}

@@ -15,12 +15,7 @@ describe("reconcileProductionShares", () => {
       ["iron-plate" as const, 40],
       ["iron-rod" as const, 30],
     ]);
-    const reconciled = reconcileProductionShares(
-      expanded.recipeCrafts,
-      targets,
-      new Map(),
-      120,
-    );
+    const reconciled = reconcileProductionShares(expanded.recipeCrafts, targets, new Map(), 120);
     // Pure target sinks — surplus only from machine overshoot if any
     for (const [, rate] of reconciled) {
       expect(rate).toBeGreaterThanOrEqual(0);

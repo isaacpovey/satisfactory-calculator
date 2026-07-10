@@ -4,11 +4,11 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "install": "npm ci",
+  "install": "pnpm install --frozen-lockfile",
   "terminals": [
     {
       "name": "dev",
-      "command": "npm run dev",
+      "command": "pnpm run dev",
       "description": "Next.js App Router dev server (static-export planner UI)"
     }
   ],

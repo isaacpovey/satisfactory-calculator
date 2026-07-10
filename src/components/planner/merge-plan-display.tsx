@@ -13,12 +13,7 @@ interface MergePlanDisplayProps {
   className?: string;
 }
 
-export function MergePlanDisplay({
-  plan,
-  itemId,
-  laneIndex,
-  className,
-}: MergePlanDisplayProps) {
+export function MergePlanDisplay({ plan, itemId, laneIndex, className }: MergePlanDisplayProps) {
   const stages = mergerOutputStageRates(plan);
 
   return (
@@ -41,9 +36,7 @@ export function MergePlanDisplay({
         </div>
         <p className="font-heading text-base font-semibold tabular-nums">
           {formatRate(plan.rate)}
-          <span className="ml-0.5 text-xs font-normal text-muted-foreground">
-            /min
-          </span>
+          <span className="ml-0.5 text-xs font-normal text-muted-foreground">/min</span>
         </p>
       </header>
 

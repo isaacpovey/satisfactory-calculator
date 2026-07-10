@@ -156,16 +156,8 @@
     @apply bg-background text-foreground;
     background-color: var(--background);
     background-image:
-      radial-gradient(
-        ellipse 90% 55% at 10% -10%,
-        oklch(0.88 0.06 48 / 0.45),
-        transparent 55%
-      ),
-      radial-gradient(
-        ellipse 70% 45% at 95% 5%,
-        oklch(0.9 0.05 175 / 0.35),
-        transparent 50%
-      ),
+      radial-gradient(ellipse 90% 55% at 10% -10%, oklch(0.88 0.06 48 / 0.45), transparent 55%),
+      radial-gradient(ellipse 70% 45% at 95% 5%, oklch(0.9 0.05 175 / 0.35), transparent 50%),
       repeating-linear-gradient(
         -12deg,
         transparent,

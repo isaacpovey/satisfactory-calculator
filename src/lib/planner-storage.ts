@@ -1,8 +1,4 @@
-import {
-  BELT_TIERS,
-  clampMaxBeltCapacity,
-  DEFAULT_MAX_BELT_CAPACITY,
-} from "@/data/belts";
+import { BELT_TIERS, clampMaxBeltCapacity, DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import { itemById } from "@/data/items";
 import type { ItemId } from "@/data/types";
 import type { TargetSpec } from "@/lib/solver/types";
@@ -26,9 +22,7 @@ function sanitizeNumber(value: unknown): number | null {
   return Math.max(0, value);
 }
 
-function sanitizeRaws(
-  value: unknown,
-): Partial<Record<ItemId, number>> | null {
+function sanitizeRaws(value: unknown): Partial<Record<ItemId, number>> | null {
   if (!value || typeof value !== "object") return null;
   const out: Partial<Record<ItemId, number>> = {};
   for (const [key, raw] of Object.entries(value)) {
@@ -61,9 +55,7 @@ function sanitizeTargets(value: unknown): TargetSpec[] | null {
   return out;
 }
 
-function sanitizeExcessFloors(
-  value: unknown,
-): Partial<Record<ItemId, number>> | null {
+function sanitizeExcessFloors(value: unknown): Partial<Record<ItemId, number>> | null {
   const raw = sanitizeRaws(value);
   if (!raw) return null;
   const out: Partial<Record<ItemId, number>> = {};
@@ -91,8 +83,7 @@ export function loadPlannerState(): PlannerPersistedState | null {
 
     const rawBelt = data.maxBeltCapacity;
     const maxBeltCapacity =
-      typeof rawBelt === "number" &&
-      BELT_TIERS.some((t) => t.capacity === rawBelt)
+      typeof rawBelt === "number" && BELT_TIERS.some((t) => t.capacity === rawBelt)
         ? rawBelt
         : DEFAULT_MAX_BELT_CAPACITY;
 

@@ -18,12 +18,7 @@ export function reconcileProductionShares(
   maxBeltCapacity: number = DEFAULT_MAX_BELT_CAPACITY,
 ): Map<ItemId, number> {
   const nextExcess = new Map(excessRates);
-  const stages = buildStages(
-    recipeCrafts,
-    maxBeltCapacity,
-    targetRates,
-    excessRates,
-  );
+  const stages = buildStages(recipeCrafts, maxBeltCapacity, targetRates, excessRates);
 
   const productionByItem = new Map<ItemId, number>();
 

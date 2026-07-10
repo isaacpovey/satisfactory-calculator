@@ -1,5 +1,7 @@
 FROM node:22-bookworm
 
+RUN corepack enable
+
 # Cloud agents need git (clone/checkout) and sudo for system tasks.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git sudo ca-certificates \

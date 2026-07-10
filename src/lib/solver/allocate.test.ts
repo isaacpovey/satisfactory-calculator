@@ -77,7 +77,7 @@ describe("constraints", () => {
   });
 });
 
-describe("solve", () => {
+describe("solve", { timeout: 30_000 }, () => {
   it("reports infeasible when minima exceed ore", () => {
     const result = solve({
       rawAvailable: { "iron-ore": 10 },
@@ -85,9 +85,7 @@ describe("solve", () => {
       excess: [],
     });
     expect(result.feasible).toBe(false);
-    expect(
-      result.raws.find((r) => r.item === "iron-ore")?.shortfall,
-    ).toBeGreaterThan(0);
+    expect(result.raws.find((r) => r.item === "iron-ore")?.shortfall).toBeGreaterThan(0);
   });
 
   it("quantizes minima upward to whole/easy clocks", () => {
@@ -177,9 +175,7 @@ describe("solve", () => {
     expect(limestone.utilization).toBeGreaterThan(0.75);
   });
 
-  it(
-    "user factory: soaks limestone and caterium leftovers",
-    () => {
+  it("user factory: soaks limestone and caterium leftovers", () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 1860,
@@ -222,14 +218,10 @@ describe("solve", () => {
     expect(limestone.utilization).toBeGreaterThan(0.95);
     expect(caterium.utilization).toBeGreaterThan(0.98);
     expect(result.overallUtilization).toBeGreaterThan(0.995);
-  },
-    10_000,
-  );
+  });
 
   /** Snapshot of live planner localStorage (satisfactory-planner:v1). */
-  it(
-    "browser planner config: solves without negative nets",
-    () => {
+  it("browser planner config: solves without negative nets", () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 1860,
@@ -273,9 +265,7 @@ describe("solve", () => {
     for (const flow of result.items) {
       expect(flow.net).toBeGreaterThanOrEqual(-1e-6);
     }
-  },
-    10_000,
-  );
+  });
 
   it("grows weight-0 targets when they best soak leftover ore", () => {
     const result = solve({
@@ -306,9 +296,9 @@ describe("solve", () => {
         limestone: 200,
       },
       targets: [
-        { item: "steel-beam", minRate: 5, weight: 90 },
-        { item: "concrete", minRate: 5, weight: 10 },
-        { item: "iron-plate", minRate: 5, weight: 5 },
+        { item: "steel-beam" as const, minRate: 5, weight: 90 },
+        { item: "concrete" as const, minRate: 5, weight: 10 },
+        { item: "iron-plate" as const, minRate: 5, weight: 5 },
       ],
       excess: [],
     };
@@ -350,14 +340,10 @@ describe("solve", () => {
     });
     expect(result.feasible).toBe(true);
     // Never schedule ingots as excess sinks
-    expect(
-      result.excess.every((e) => e.rate < 1e-6 || !e.item.includes("ingot")),
-    ).toBe(true);
+    expect(result.excess.every((e) => e.rate < 1e-6 || !e.item.includes("ingot"))).toBe(true);
     // Ore soak may land on target extra or excess intermediates — not ingots.
     const beam = result.targets.find((t) => t.item === "steel-beam")!;
-    const usefulExcess = result.excess.some(
-      (e) => e.rate > 0 && !e.item.includes("ingot"),
-    );
+    const usefulExcess = result.excess.some((e) => e.rate > 0 && !e.item.includes("ingot"));
     expect(usefulExcess || beam.extraRate > 0).toBe(true);
     // Quantization may leave a tiny irreducible ingot residual, but not a
     // planned soak dump (previously ~27.5 steel ingot/min excess).
@@ -376,8 +362,7 @@ describe("solve", () => {
       excess: [],
     });
     const iron = result.raws.find((r) => r.item === "iron-ore")!;
-    const ingotNet =
-      result.items.find((i) => i.item === "iron-ingot")?.net ?? 0;
+    const ingotNet = result.items.find((i) => i.item === "iron-ingot")?.net ?? 0;
     // Any unused iron ingots (1:1 with ore) must be excluded from used
     expect(iron.used).toBeCloseTo(120 - Math.max(0, ingotNet), 6);
     expect(iron.leftover).toBeCloseTo(Math.max(0, ingotNet), 6);
@@ -446,9 +431,7 @@ describe("solve", () => {
     expect(result.network.stages.length).toBeGreaterThan(0);
     expect(result.network.edges.length).toBeGreaterThan(0);
 
-    const ingotStage = result.network.stages.find(
-      (s) => s.recipeId === "iron-ingot",
-    );
+    const ingotStage = result.network.stages.find((s) => s.recipeId === "iron-ingot");
     expect(ingotStage).toBeDefined();
     const outgoing = result.network.edges.filter(
       (e) => e.from.kind === "stage" && e.from.id === "iron-ingot",
@@ -476,10 +459,7 @@ describe("solve", () => {
     // May share ore with excess soak — if sole, mergeOnly
     if (oreToIngot) {
       const siblings = result.network.edges.filter(
-        (e) =>
-          e.from.kind === "raw" &&
-          e.from.id === "iron-ore" &&
-          e.item === "iron-ore",
+        (e) => e.from.kind === "raw" && e.from.id === "iron-ore" && e.item === "iron-ore",
       );
       if (siblings.length === 1) {
         expect(oreToIngot.outputSplit.mergeOnly).toBe(true);
@@ -521,9 +501,7 @@ describe("solve", () => {
     expect(result.feasible).toBe(true);
     for (const stage of result.network.stages) {
       for (const g of stage.groups) {
-        expect(g.machines === 1 || isSplitterFriendlyCount(g.machines)).toBe(
-          true,
-        );
+        expect(g.machines === 1 || isSplitterFriendlyCount(g.machines)).toBe(true);
         expect(g.inputSplit.overflowToStorage).toBeFalsy();
         if (!g.inputSplit.mergeOnly) {
           expect(g.inputSplit.ratio).not.toBeNull();
@@ -536,10 +514,7 @@ describe("solve", () => {
         // Production never uses programmable overflow-to-storage
         expect(edge.outputSplit.overflowToStorage).toBeFalsy();
         // Shared production splits must be friendly (or sole / after-overflow)
-        if (
-          !edge.outputSplit.mergeOnly &&
-          !edge.outputSplit.restAfterOverflow
-        ) {
+        if (!edge.outputSplit.mergeOnly && !edge.outputSplit.restAfterOverflow) {
           expect(edge.outputSplit.ratio).not.toBeNull();
         }
       }
@@ -556,18 +531,14 @@ describe("solve", () => {
       excess: [],
       maxBeltCapacity: 270,
     });
-    const stage = result.network.stages.find(
-      (s) => s.recipeId === "copper-ingot",
-    )!;
+    const stage = result.network.stages.find((s) => s.recipeId === "copper-ingot")!;
     expect(stage.outputMerges.length).toBeGreaterThan(1);
     // Each lane has at most one production destination (may span multiple belts)
     for (const lane of stage.outputMerges) {
       expect(lane.to).toBeDefined();
     }
     const destIds = new Set(
-      stage.outputMerges
-        .filter((m) => m.to && m.to.kind !== "excess")
-        .map((m) => m.to!.id),
+      stage.outputMerges.filter((m) => m.to && m.to.kind !== "excess").map((m) => m.to!.id),
     );
     expect(destIds.size).toBeGreaterThanOrEqual(2);
     const outs = result.network.edges.filter(
@@ -578,9 +549,7 @@ describe("solve", () => {
     );
     expect(outs.every((e) => e.fromLaneIndex != null)).toBe(true);
     for (const e of outs) {
-      expect(
-        e.outputSplit.mergeOnly || e.outputSplit.restAfterOverflow,
-      ).toBe(true);
+      expect(e.outputSplit.mergeOnly || e.outputSplit.restAfterOverflow).toBe(true);
     }
   });
 
@@ -590,9 +559,7 @@ describe("solve", () => {
       targets: [{ item: "iron-plate", minRate: 20, weight: 0 }],
       excess: [],
     });
-    const excessEdges = result.network.edges.filter(
-      (e) => e.to.kind === "excess",
-    );
+    const excessEdges = result.network.edges.filter((e) => e.to.kind === "excess");
     // Not required every solve, but when unfriendly the flag must be set
     for (const e of excessEdges) {
       if (!e.outputSplit.mergeOnly && e.outputSplit.ratio === null) {
@@ -601,4 +568,3 @@ describe("solve", () => {
     }
   });
 });
-

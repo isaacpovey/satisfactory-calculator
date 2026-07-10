@@ -34,12 +34,8 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
     <section className="flex flex-col gap-3 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="font-heading text-base font-semibold">
-            Excess floors
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Optional spare-part minimums
-          </p>
+          <h2 className="font-heading text-base font-semibold">Excess floors</h2>
+          <p className="text-sm text-muted-foreground">Optional spare-part minimums</p>
         </div>
         {idle.length > 0 ? (
           <button
@@ -58,9 +54,7 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
             Add an end product to see chain intermediaries.
           </p>
         ) : visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No active spare parts yet.
-          </p>
+          <p className="text-sm text-muted-foreground">No active spare parts yet.</p>
         ) : (
           visible.map((row) => {
             const floor = floors[row.item] ?? 0;
@@ -78,19 +72,12 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
                     {itemById[row.item]?.name ?? row.item}
                   </p>
                   <p className="text-xs tabular-nums text-muted-foreground">
-                    {isActive
-                      ? `${formatRate(row.rate)}/min`
-                      : "idle"}
-                    {row.autoRate > 1e-6
-                      ? ` · +${formatRate(row.autoRate)} auto`
-                      : ""}
+                    {isActive ? `${formatRate(row.rate)}/min` : "idle"}
+                    {row.autoRate > 1e-6 ? ` · +${formatRate(row.autoRate)} auto` : ""}
                   </p>
                 </div>
                 <div className="grid gap-1">
-                  <Label
-                    htmlFor={`excess-floor-${row.item}`}
-                    className="text-xs"
-                  >
+                  <Label htmlFor={`excess-floor-${row.item}`} className="text-xs">
                     Floor
                   </Label>
                   <Input
@@ -103,10 +90,7 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
                     value={floor}
                     onChange={(e) => {
                       const n = Number(e.target.value);
-                      onFloorChange(
-                        row.item,
-                        Number.isFinite(n) && n >= 0 ? n : 0,
-                      );
+                      onFloorChange(row.item, Number.isFinite(n) && n >= 0 ? n : 0);
                     }}
                   />
                 </div>

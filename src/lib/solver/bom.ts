@@ -72,25 +72,14 @@ export function expandDemandToMaps(
   const groups = packMachineBanks(recipe, exactMachines, {
     maxBeltCapacity: opts.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
   });
-  const craftsPerMinute =
-    totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
+  const craftsPerMinute = totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
 
-  recipeCraftsPerMin.set(
-    recipe.id,
-    (recipeCraftsPerMin.get(recipe.id) ?? 0) + craftsPerMinute,
-  );
+  recipeCraftsPerMin.set(recipe.id, (recipeCraftsPerMin.get(recipe.id) ?? 0) + craftsPerMinute);
 
   stack.add(itemId);
   for (const input of recipe.inputs) {
     const itemsPerMin = input.amount * craftsPerMinute;
-    expandDemandToMaps(
-      input.item,
-      itemsPerMin,
-      recipeCraftsPerMin,
-      rawConsumption,
-      stack,
-      opts,
-    );
+    expandDemandToMaps(input.item, itemsPerMin, recipeCraftsPerMin, rawConsumption, stack, opts);
   }
   stack.delete(itemId);
 }
@@ -160,10 +149,7 @@ export function expandFactoryPlan(
       const groups = packMachineBanks(recipe, rate / base, {
         maxBeltCapacity: maxBelt,
       });
-      craftsByItem.set(
-        itemId,
-        totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe),
-      );
+      craftsByItem.set(itemId, totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe));
     }
 
     const needed: RateMap = new Map(sinkRates);
@@ -203,12 +189,8 @@ export function expandFactoryPlan(
     const groups = packMachineBanks(recipe, rate / base, {
       maxBeltCapacity: maxBelt,
     });
-    const crafts =
-      totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
-    recipeCrafts.set(
-      recipe.id,
-      (recipeCrafts.get(recipe.id) ?? 0) + crafts,
-    );
+    const crafts = totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
+    recipeCrafts.set(recipe.id, (recipeCrafts.get(recipe.id) ?? 0) + crafts);
   }
 
   // Raw consumption from quantized crafts (authoritative)
@@ -231,9 +213,7 @@ export function expandFactoryPlan(
  * Exact (non-quantized) scarce raw items/min for 1 item/min of `itemId`.
  * Used for continuous leftover scaling before quantization.
  */
-export function exactRawCoefficients(
-  itemId: ItemId,
-): Partial<Record<ItemId, number>> {
+export function exactRawCoefficients(itemId: ItemId): Partial<Record<ItemId, number>> {
   return exactExpandCoeffs(itemId, 1);
 }
 
@@ -261,11 +241,7 @@ function exactExpandCoeffs(
   stack.add(itemId);
   const out: Partial<Record<ItemId, number>> = {};
   for (const input of recipe.inputs) {
-    const child = exactExpandCoeffs(
-      input.item,
-      input.amount * craftsPerMin,
-      stack,
-    );
+    const child = exactExpandCoeffs(input.item, input.amount * craftsPerMin, stack);
     for (const [k, v] of Object.entries(child) as [ItemId, number][]) {
       out[k] = (out[k] ?? 0) + v;
     }
@@ -274,9 +250,7 @@ function exactExpandCoeffs(
   return out;
 }
 
-export function rawCoefficients(
-  itemId: ItemId,
-): Partial<Record<ItemId, number>> {
+export function rawCoefficients(itemId: ItemId): Partial<Record<ItemId, number>> {
   return exactRawCoefficients(itemId);
 }
 

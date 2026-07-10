@@ -84,9 +84,7 @@ describe("representMachinesMulti", () => {
   it("beats a single 6@100% group on overshoot", () => {
     const multi = representMachinesMulti(5.25, { anyMachineCount: true });
     const single = representMachines(5.25);
-    expect(totalEffectiveMachines(multi)).toBeLessThan(
-      single.effectiveMachines - 1e-9,
-    );
+    expect(totalEffectiveMachines(multi)).toBeLessThan(single.effectiveMachines - 1e-9);
   });
 
   it("keeps a single group when that is best", () => {

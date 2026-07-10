@@ -1,8 +1,5 @@
 import type { ItemId } from "@/data/types";
-import {
-  FlowEndpointLink,
-  ItemFlowLink,
-} from "@/components/planner/flow-endpoint-link";
+import { FlowEndpointLink, ItemFlowLink } from "@/components/planner/flow-endpoint-link";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
 import { formatRate } from "@/lib/solver/format";
 import type { FlowEdge, MergePlan } from "@/lib/solver/types";
@@ -23,11 +20,7 @@ function destinationLabel(lane: MergePlan): string {
   return `Belt to ${lane.to.id}`;
 }
 
-export function DownstreamLanes({
-  itemId,
-  lanes,
-  edges,
-}: DownstreamLanesProps) {
+export function DownstreamLanes({ itemId, lanes, edges }: DownstreamLanesProps) {
   if (lanes.length === 0) {
     if (edges.length === 0) return null;
     return (
@@ -46,8 +39,8 @@ export function DownstreamLanes({
           Downstream by destination
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Each belt feeds one destination. Machine overshoot on that belt goes
-          to storage as overflow.
+          Each belt feeds one destination. Machine overshoot on that belt goes to storage as
+          overflow.
         </p>
       </div>
 
@@ -72,11 +65,7 @@ export function DownstreamLanes({
                   <ItemFlowLink itemId={itemId} embedded />
                   {lane.to && lane.to.kind !== "excess" ? (
                     <span className="text-[11px] text-muted-foreground">
-                      <FlowEndpointLink
-                        kind={lane.to.kind}
-                        id={lane.to.id}
-                        embedded
-                      />
+                      <FlowEndpointLink kind={lane.to.kind} id={lane.to.id} embedded />
                     </span>
                   ) : null}
                 </div>
@@ -89,24 +78,14 @@ export function DownstreamLanes({
               </header>
 
               {production.length === 0 && overflow.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">
-                  No downstream on this belt
-                </p>
+                <p className="text-[11px] text-muted-foreground">No downstream on this belt</p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {production.map((edge, i) => (
-                    <ConsumerRow
-                      key={`p-${laneIndex}-${i}`}
-                      edge={edge}
-                      laneRate={lane.rate}
-                    />
+                    <ConsumerRow key={`p-${laneIndex}-${i}`} edge={edge} laneRate={lane.rate} />
                   ))}
                   {overflow.map((edge, i) => (
-                    <ConsumerRow
-                      key={`o-${laneIndex}-${i}`}
-                      edge={edge}
-                      laneRate={lane.rate}
-                    />
+                    <ConsumerRow key={`o-${laneIndex}-${i}`} edge={edge} laneRate={lane.rate} />
                   ))}
                   {gap > EPS ? (
                     <p className="text-[11px] text-amber-700 dark:text-amber-400">
@@ -123,13 +102,7 @@ export function DownstreamLanes({
   );
 }
 
-function ConsumerRow({
-  edge,
-  laneRate,
-}: {
-  edge: FlowEdge;
-  laneRate?: number;
-}) {
+function ConsumerRow({ edge, laneRate }: { edge: FlowEdge; laneRate?: number }) {
   const kindTone =
     edge.to.kind === "excess"
       ? "border-l-2 border-l-amber-500/50 bg-amber-500/5"
@@ -148,19 +121,11 @@ function ConsumerRow({
         <span className="text-sm font-medium">
           <FlowEndpointLink kind={edge.to.kind} id={edge.to.id} embedded />
         </span>
-        <span className="text-sm font-semibold tabular-nums">
-          {formatRate(edge.rate)}/min
-        </span>
+        <span className="text-sm font-semibold tabular-nums">{formatRate(edge.rate)}/min</span>
       </div>
 
-      <SplitterPlanDisplay
-        plan={edge.outputSplit}
-        variant="output"
-        embedded
-      />
-      {laneRate != null &&
-      edge.outputSplit.restAfterOverflow &&
-      edge.rate + EPS < laneRate ? (
+      <SplitterPlanDisplay plan={edge.outputSplit} variant="output" embedded />
+      {laneRate != null && edge.outputSplit.restAfterOverflow && edge.rate + EPS < laneRate ? (
         <p className="text-[11px] text-muted-foreground">
           {formatRate(edge.rate)} of {formatRate(laneRate)}/min on belt
         </p>

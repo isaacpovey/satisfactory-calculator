@@ -10,10 +10,7 @@ const recipeById = Object.fromEntries(allRecipes.map((r) => [r.id, r])) as Recor
 >;
 
 /** Upstream stage recipe IDs that supply inputs to this stage. */
-function stageDependencies(
-  stage: ProductionStage,
-  activeIds: Set<string>,
-): string[] {
+function stageDependencies(stage: ProductionStage, activeIds: Set<string>): string[] {
   const recipe = recipeById[stage.recipeId];
   if (!recipe) return [];
   const deps: string[] = [];
@@ -57,9 +54,7 @@ export function orderStagesByDependency(stages: ProductionStage[]): ProductionSt
     }
   }
 
-  const ready = stages
-    .filter((s) => (inDegree.get(s.recipeId) ?? 0) === 0)
-    .sort(compareStages);
+  const ready = stages.filter((s) => (inDegree.get(s.recipeId) ?? 0) === 0).sort(compareStages);
 
   const sorted: ProductionStage[] = [];
   while (ready.length > 0) {
@@ -132,16 +127,10 @@ function rawOresForComponent(stageIds: Set<string>): ItemId[] {
       if (item?.isRaw && !item.isUnlimited) ores.add(input.item);
     }
   }
-  return [...ores].sort((a, b) =>
-    (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b),
-  );
+  return [...ores].sort((a, b) => (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b));
 }
 
-function chainLabel(
-  stageIds: Set<string>,
-  targetItems: ItemId[],
-  index: number,
-): string {
+function chainLabel(stageIds: Set<string>, targetItems: ItemId[], index: number): string {
   const targetsInChain = targetItems.filter((t) => {
     const producer = getRecipeForProduct(t);
     return producer && stageIds.has(producer.id);
@@ -176,9 +165,7 @@ export function buildChainGroups(
 
   const groups: ProductionChainGroup[] = components.map((ids, i) => {
     const idSet = new Set(ids);
-    const orderedIds = stages
-      .filter((s) => idSet.has(s.recipeId))
-      .map((s) => s.recipeId);
+    const orderedIds = stages.filter((s) => idSet.has(s.recipeId)).map((s) => s.recipeId);
     return {
       id: `chain-${i}`,
       label: chainLabel(idSet, targetItems, i),
