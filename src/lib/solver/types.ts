@@ -126,8 +126,15 @@ export interface FlowEdge {
   outputSplit: SplitPlan;
 }
 
+export interface ProductionChainGroup {
+  id: string;
+  label: string;
+  stageIds: string[];
+}
+
 export interface FactoryNetwork {
   stages: ProductionStage[];
+  chains: ProductionChainGroup[];
   edges: FlowEdge[];
 }
 

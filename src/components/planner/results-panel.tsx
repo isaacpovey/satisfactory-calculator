@@ -7,19 +7,23 @@ import { recipes as allRecipes } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
 import type {
   FlowEdge,
+  FactoryNetwork,
+  ProductionStage,
   SolveResult,
-  SplitPlan,
 } from "@/lib/solver/types";
 import type { ResultChanges } from "@/lib/solver/diff";
 import { emptyChanges } from "@/lib/solver/diff";
-import { formatClock } from "@/lib/solver/constraints";
 import {
-  formatMachines,
   formatPercent,
   formatRate,
 } from "@/lib/solver/format";
-import type { AllowedClock } from "@/lib/solver/constraints";
 import { cn } from "@/lib/utils";
+import {
+  FlowEndpointLink,
+  ItemFlowLink,
+} from "@/components/planner/flow-endpoint-link";
+import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
+import { MachineGroupCard } from "@/components/planner/machine-group-card";
 
 interface ResultsPanelProps {
   result: SolveResult | null;
@@ -46,15 +50,6 @@ function utilTone(u: number): string {
   if (u >= 0.9) return "bg-util-high";
   if (u >= 0.55) return "bg-util-mid";
   return "bg-util-low";
-}
-
-function formatSplitPlan(plan: SplitPlan): string {
-  if (plan.mergeOnly) return "full belt";
-  if (!plan.ratio) return "balancer";
-  const ratio =
-    plan.ratio.den === 1 ? "all" : `${plan.ratio.num}/${plan.ratio.den}`;
-  if (plan.steps.length === 0) return ratio;
-  return `${ratio} · ${plan.steps.join(" → ")}`;
 }
 
 function formatEndpoint(kind: string, id: string): string {
@@ -177,32 +172,172 @@ function UtilMeter({
 function FlowChip({ edge }: { edge: FlowEdge }) {
   const kindTone =
     edge.to.kind === "target"
-      ? "bg-primary/12 text-primary ring-primary/20"
+      ? "border-l-2 border-l-primary bg-primary/8 text-foreground ring-primary/20"
       : edge.to.kind === "excess"
-        ? "bg-accent text-accent-foreground ring-accent-foreground/15"
-        : "bg-secondary text-secondary-foreground ring-foreground/8";
+        ? "border-l-2 border-l-accent-foreground/50 bg-accent/35 text-foreground ring-accent-foreground/15"
+        : "bg-card text-foreground ring-foreground/10";
 
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-lg px-3 py-2 ring-1",
+        "flex flex-col gap-2 rounded-lg px-3 py-2 ring-1",
         kindTone,
       )}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <span className="text-sm font-medium">
-          {formatEndpoint(edge.to.kind, edge.to.id)}
+          <FlowEndpointLink
+            kind={edge.to.kind}
+            id={edge.to.id}
+            embedded
+          />
         </span>
         <span className="text-sm font-semibold tabular-nums">
           {formatRate(edge.rate)}/min
         </span>
       </div>
-      <p className="text-xs opacity-80">
-        {itemById[edge.item]?.name ?? edge.item}
-        {" · "}
-        {formatSplitPlan(edge.outputSplit)}
-      </p>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-xs text-muted-foreground">
+          <ItemFlowLink itemId={edge.item} embedded />
+        </p>
+        <SplitterPlanDisplay
+          plan={edge.outputSplit}
+          variant="output"
+          embedded
+        />
+      </div>
     </div>
+  );
+}
+
+function InputFlowRow({ edge }: { edge: FlowEdge }) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/50 px-3 py-2 ring-1 ring-foreground/6">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="text-sm font-medium">
+          <ItemFlowLink itemId={edge.item} />
+        </span>
+        <span className="text-sm font-semibold tabular-nums">
+          {formatRate(edge.rate)}/min
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        from{" "}
+        <FlowEndpointLink
+          kind={edge.from.kind === "raw" ? "raw" : "stage"}
+          id={edge.from.id}
+          label={formatEndpoint(
+            edge.from.kind === "raw" ? "raw" : "recipe",
+            edge.from.id,
+          )}
+        />
+      </p>
+      {!edge.outputSplit.mergeOnly ? (
+        <SplitterPlanDisplay plan={edge.outputSplit} variant="output" />
+      ) : null}
+    </div>
+  );
+}
+
+function StageCard({
+  stage,
+  network,
+  stageChanged,
+}: {
+  stage: ProductionStage;
+  network: FactoryNetwork;
+  stageChanged: boolean;
+}) {
+  const outgoing = network.edges.filter(
+    (e) => e.from.kind === "stage" && e.from.id === stage.recipeId,
+  );
+  const incoming = network.edges.filter(
+    (e) => e.to.kind === "recipe" && e.to.id === stage.recipeId,
+  );
+
+  return (
+    <article
+      id={`stage-${stage.recipeId}`}
+      className={cn(
+        "scroll-mt-4 overflow-hidden rounded-xl bg-card/90 transition-[box-shadow] duration-300",
+        changedRing(stageChanged),
+      )}
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/12 via-secondary/50 to-accent/25 px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-heading text-base font-semibold">
+              {stage.recipeName}
+            </h3>
+            {stageChanged ? (
+              <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                updated
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {stage.building}
+            {" · "}
+            <ItemFlowLink itemId={stage.primaryOutput} />
+          </p>
+        </div>
+        <p className="font-heading text-lg font-bold tabular-nums text-primary">
+          {formatRate(stage.outputPerMinute)}
+          <span className="ml-0.5 text-xs font-medium text-muted-foreground">
+            /min
+          </span>
+        </p>
+      </header>
+
+      <div className="flex flex-col gap-4 p-4">
+        {incoming.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Inputs
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {incoming.map((edge, i) => (
+                <InputFlowRow
+                  key={`in-${edge.item}-${edge.from.kind}-${edge.from.id}-${i}`}
+                  edge={edge}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Machine groups
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {stage.groups.map((g, i) => (
+              <MachineGroupCard
+                key={`${stage.recipeId}-g-${i}`}
+                recipeId={stage.recipeId}
+                group={g}
+              />
+            ))}
+          </div>
+        </div>
+
+        {outgoing.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Outputs
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {outgoing.map((edge, i) => (
+                <FlowChip
+                  key={`${edge.item}-${edge.to.kind}-${edge.to.id}-${i}`}
+                  edge={edge}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -337,8 +472,9 @@ export function ResultsPanel({
               {result.targets.map((t) => (
                 <div
                   key={t.item}
+                  id={`target-${t.item}`}
                   className={cn(
-                    "flex flex-col gap-2 rounded-xl bg-card/80 p-4 transition-[box-shadow,background-color] duration-300",
+                    "scroll-mt-4 flex flex-col gap-2 rounded-xl bg-card/80 p-4 transition-[box-shadow,background-color] duration-300",
                     changedRing(changes.targets.has(t.item)),
                   )}
                 >
@@ -385,88 +521,34 @@ export function ResultsPanel({
               No production required yet.
             </p>
           ) : (
-            <div className="flex flex-col gap-4">
-              {network.stages.map((stage) => {
-                const outgoing = network.edges.filter(
-                  (e) =>
-                    e.from.kind === "stage" && e.from.id === stage.recipeId,
-                );
-                const stageChanged = changes.stages.has(stage.recipeId);
-                return (
-                  <article
-                    key={stage.recipeId}
-                    className={cn(
-                      "overflow-hidden rounded-xl bg-card/90 transition-[box-shadow] duration-300",
-                      changedRing(stageChanged),
-                    )}
-                  >
-                    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/12 via-secondary/50 to-accent/25 px-4 py-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-heading text-base font-semibold">
-                            {stage.recipeName}
-                          </h3>
-                          {stageChanged ? (
-                            <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                              updated
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {stage.building}
-                          {" · "}
-                          {itemById[stage.primaryOutput]?.name ??
-                            stage.primaryOutput}
-                        </p>
-                      </div>
-                      <p className="font-heading text-lg font-bold tabular-nums text-primary">
-                        {formatRate(stage.outputPerMinute)}
-                        <span className="ml-0.5 text-xs font-medium text-muted-foreground">
-                          /min
-                        </span>
-                      </p>
-                    </header>
+            <div className="flex flex-col gap-6">
+              {(network.chains.length > 1 ? network.chains : [{ id: "all", label: "", stageIds: network.stages.map((s) => s.recipeId) }]).map(
+                (chain) => {
+                  const chainStages = chain.stageIds
+                    .map((id) => network.stages.find((s) => s.recipeId === id))
+                    .filter((s): s is ProductionStage => s !== undefined);
 
-                    <div className="flex flex-col gap-4 p-4">
-                      <div className="flex flex-wrap gap-2">
-                        {stage.groups.map((g, i) => (
-                          <div
-                            key={`${stage.recipeId}-g-${i}`}
-                            className="flex flex-col gap-0.5 rounded-lg bg-muted/80 px-3 py-2"
-                          >
-                            <p className="font-heading text-sm font-semibold tabular-nums">
-                              {formatMachines(g.machines)}
-                              <span className="mx-1 text-muted-foreground">
-                                @
-                              </span>
-                              {formatClock(g.clock as AllowedClock)}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">
-                              feed {formatSplitPlan(g.inputSplit)}
-                            </p>
-                          </div>
+                  return (
+                    <div key={chain.id} className="flex flex-col gap-3">
+                      {network.chains.length > 1 && chain.label ? (
+                        <h3 className="font-heading text-sm font-semibold text-muted-foreground">
+                          {chain.label}
+                        </h3>
+                      ) : null}
+                      <div className="flex flex-col gap-4">
+                        {chainStages.map((stage) => (
+                          <StageCard
+                            key={stage.recipeId}
+                            stage={stage}
+                            network={network}
+                            stageChanged={changes.stages.has(stage.recipeId)}
+                          />
                         ))}
                       </div>
-
-                      {outgoing.length > 0 ? (
-                        <div className="flex flex-col gap-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Outputs
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {outgoing.map((edge, i) => (
-                              <FlowChip
-                                key={`${edge.item}-${edge.to.kind}-${edge.to.id}-${i}`}
-                                edge={edge}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
-                  </article>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
           )}
         </Section>
@@ -485,24 +567,27 @@ export function ResultsPanel({
               {rawEdges.map((edge, i) => (
                 <div
                   key={`raw-${edge.item}-${edge.to.id}-${i}`}
-                  className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5"
+                  id={`raw-${edge.item}-${edge.to.id}`}
+                  className="scroll-mt-4 flex items-start gap-3 rounded-lg bg-muted/50 px-3 py-2.5"
                 >
                   <span
                     className={cn(
-                      "size-2.5 shrink-0 rounded-full",
+                      "mt-1.5 size-2.5 shrink-0 rounded-full",
                       ORE_SWATCH[edge.item] ?? "bg-primary",
                     )}
                     aria-hidden
                   />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 flex flex-col gap-1.5">
                     <p className="truncate text-sm font-medium">
-                      {itemById[edge.item]?.name ?? edge.item}
+                      <ItemFlowLink itemId={edge.item} />
                       <span className="mx-1.5 text-muted-foreground">→</span>
-                      {formatEndpoint(edge.to.kind, edge.to.id)}
+                      <FlowEndpointLink kind="recipe" id={edge.to.id} />
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatSplitPlan(edge.outputSplit)}
-                    </p>
+                    <SplitterPlanDisplay
+                      plan={edge.outputSplit}
+                      variant="output"
+                      embedded
+                    />
                   </div>
                   <span className="shrink-0 text-sm font-semibold tabular-nums">
                     {formatRate(edge.rate)}
@@ -527,8 +612,9 @@ export function ResultsPanel({
               {activeExcess.map((e) => (
                 <div
                   key={e.item}
+                  id={`excess-${e.item}`}
                   className={cn(
-                    "rounded-lg bg-card/80 px-3 py-2 transition-[box-shadow] duration-300",
+                    "scroll-mt-4 rounded-lg bg-card/80 px-3 py-2 transition-[box-shadow] duration-300",
                     changes.excess.has(e.item)
                       ? "ring-2 ring-primary/50"
                       : "ring-1 ring-foreground/6",

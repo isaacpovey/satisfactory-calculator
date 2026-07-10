@@ -12,6 +12,7 @@ import {
   splitStepsForCount,
   splitStepsForRatio,
 } from "./constraints";
+import { buildChainGroups, orderStagesByDependency } from "./stage-order";
 import type {
   FactoryNetwork,
   FlowEdge,
@@ -92,8 +93,7 @@ export function buildStages(
       outputPerMinute: primary.amount * crafts,
     });
   }
-  stages.sort((a, b) => a.recipeName.localeCompare(b.recipeName));
-  return stages;
+  return orderStagesByDependency(stages);
 }
 
 /**
@@ -223,5 +223,10 @@ export function buildFactoryNetwork(
     );
   });
 
-  return { stages, edges };
+  const chains = buildChainGroups(
+    stages,
+    [...targetRates.keys()].filter((item) => (targetRates.get(item) ?? 0) > EPS),
+  );
+
+  return { stages, chains, edges };
 }
