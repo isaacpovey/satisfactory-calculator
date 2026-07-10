@@ -161,8 +161,8 @@ export function PlannerApp() {
         </h1>
         <p className="text-base text-muted-foreground text-pretty">
           Set your ore rates and minimum products, then compute. Leftover
-          capacity fills by balance weight and soaks into spare parts with
-          buildable machine banks and splitter shares.
+          capacity fills by balance weight and soaks into spare parts — never
+          raw ingots — with buildable machine banks and splitter shares.
         </p>
       </header>
 

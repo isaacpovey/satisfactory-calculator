@@ -58,6 +58,11 @@ export interface Item {
   isRaw: boolean;
   /** Unlimited inputs (e.g. water) are not scarce constraints */
   isUnlimited?: boolean;
+  /**
+   * Smelted intermediates with no building utility. Never planned as end
+   * products or excess sinks — leftover must be converted downstream.
+   */
+  isIngot?: boolean;
   tier: number;
 }
 

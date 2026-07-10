@@ -2,11 +2,10 @@ import {
   clampMaxBeltCapacity,
   DEFAULT_MAX_BELT_CAPACITY,
 } from "@/data/belts";
-import { buildings, itemById, manufacturedItemIds, scarceRawIds } from "@/data/items";
+import { itemById, manufacturedItemIds, scarceRawIds } from "@/data/items";
 import {
   getRecipeForProduct,
   recipes as allRecipes,
-  recipeCyclesPerMinute,
   recipePrimaryOutputPerMinute,
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
@@ -34,10 +33,6 @@ import type {
 } from "./types";
 
 const EPS = 1e-9;
-
-const buildingName = Object.fromEntries(
-  buildings.map((b) => [b.id, b.name]),
-) as Record<string, string>;
 
 function emptyRawMap(): RateMap {
   const map: RateMap = new Map();
@@ -107,6 +102,128 @@ function collectChainIntermediates(roots: ItemId[]): ItemId[] {
   }
   const rootSet = new Set(roots);
   return [...seen].filter((id) => !itemById[id]?.isRaw && !rootSet.has(id));
+}
+
+function isIngotItem(itemId: ItemId): boolean {
+  return itemById[itemId]?.isIngot === true;
+}
+
+/** True when producing `product` consumes `intermediate` somewhere in its tree. */
+function consumesItem(product: ItemId, intermediate: ItemId): boolean {
+  if (product === intermediate) return true;
+  const seen = new Set<ItemId>();
+  const stack = [product];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const item = itemById[id];
+    if (!item || item.isRaw) continue;
+    const recipe = getRecipeForProduct(id);
+    if (!recipe) continue;
+    for (const input of recipe.inputs) {
+      if (input.item === intermediate) return true;
+      if (!itemById[input.item]?.isRaw) stack.push(input.item);
+    }
+  }
+  return false;
+}
+
+/** Ingot items/min produced but not consumed by the expanded plan. */
+function leftoverIngotsFromPlan(
+  sinks: { item: ItemId; rate: number }[],
+  maxBeltCapacity: number,
+): RateMap {
+  const { recipeCrafts } = expandSinks(sinks, maxBeltCapacity);
+  const produced: RateMap = new Map();
+  const consumed: RateMap = new Map();
+  for (const recipe of allRecipes) {
+    const crafts = recipeCrafts.get(recipe.id) ?? 0;
+    if (crafts <= EPS) continue;
+    for (const output of recipe.outputs) {
+      if (isIngotItem(output.item)) {
+        addRate(produced, output.item, output.amount * crafts);
+      }
+    }
+    for (const input of recipe.inputs) {
+      if (isIngotItem(input.item)) {
+        addRate(consumed, input.item, input.amount * crafts);
+      }
+    }
+  }
+  const leftover: RateMap = new Map();
+  for (const [item, p] of produced) {
+    leftover.set(item, Math.max(0, p - (consumed.get(item) ?? 0)));
+  }
+  return leftover;
+}
+
+/** Exact intermediate items/min needed for 1 item/min of `product`. */
+function exactItemCoefficient(product: ItemId, intermediate: ItemId): number {
+  if (product === intermediate) return 1;
+  const memo = new Map<ItemId, number>();
+  const walk = (itemId: ItemId): number => {
+    if (itemId === intermediate) return 1;
+    if (memo.has(itemId)) return memo.get(itemId)!;
+    const item = itemById[itemId];
+    if (!item || item.isRaw) {
+      memo.set(itemId, 0);
+      return 0;
+    }
+    const recipe = getRecipeForProduct(itemId);
+    if (!recipe) {
+      memo.set(itemId, 0);
+      return 0;
+    }
+    const primary = recipe.outputs.find((o) => o.item === itemId);
+    if (!primary) {
+      memo.set(itemId, 0);
+      return 0;
+    }
+    let total = 0;
+    for (const input of recipe.inputs) {
+      total += (input.amount / primary.amount) * walk(input.item);
+    }
+    memo.set(itemId, total);
+    return total;
+  };
+  return walk(product);
+}
+
+/**
+ * Achievable excess rates that can absorb up to `leftoverIngot` of `ingotId`.
+ * Bounded enumeration — unlike ore soak, we only need a few machine steps.
+ */
+function collectIngotConversionRates(
+  itemId: ItemId,
+  current: number,
+  leftoverIngot: number,
+  ingotId: ItemId,
+): number[] {
+  const recipe = getRecipeForProduct(itemId);
+  if (!recipe) return [];
+  const base = recipePrimaryOutputPerMinute(recipe);
+  if (base <= EPS) return [];
+  const coeff = exactItemCoefficient(itemId, ingotId);
+  if (coeff <= EPS) return [];
+
+  const maxAdditional = leftoverIngot / coeff;
+  if (maxAdditional <= EPS) return [];
+  const tryMax = current + maxAdditional + base;
+
+  const rates = new Set<number>();
+  const minClock = Math.min(...ALLOWED_CLOCKS);
+  const maxMachines = Math.max(
+    1,
+    Math.min(24, Math.ceil(tryMax / (base * minClock) + EPS)),
+  );
+  for (let machines = 1; machines <= maxMachines; machines++) {
+    for (const clock of ALLOWED_CLOCKS) {
+      const rate = machines * clock * base;
+      if (rate > current + EPS && rate <= tryMax + EPS) rates.add(rate);
+    }
+  }
+  return [...rates].sort((a, b) => a - b);
 }
 
 function collectGrowthRates(
@@ -280,6 +397,27 @@ function overallUtil(raws: RawUtilization[]): number {
 }
 
 /**
+ * Scarce raws locked in unused ingot output. Those do not count toward
+ * utilization — smelting without consuming the ingot is not useful work.
+ */
+function rawsLockedInLeftoverIngots(
+  sinks: { item: ItemId; rate: number }[],
+  maxBeltCapacity: number,
+): RateMap {
+  const leftoverIngots = leftoverIngotsFromPlan(sinks, maxBeltCapacity);
+  const locked = emptyRawMap();
+  for (const [ingot, rate] of leftoverIngots) {
+    if (rate <= EPS) continue;
+    const coeffs = exactRawCoefficients(ingot);
+    for (const id of scarceRawIds) {
+      const c = coeffs[id] ?? 0;
+      if (c > EPS) addRate(locked, id, c * rate);
+    }
+  }
+  return locked;
+}
+
+/**
  * Min-targets-then-balance with machine/clock quantization, belt-capped
  * friendly banks, splitter-friendly production shares, and complexity-first
  * auto excess toward 100% utilization.
@@ -289,12 +427,13 @@ export function solve(input: PlannerInput): SolveResult {
     input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
   );
   const targets = input.targets.filter(
-    (t) => t.minRate > EPS || t.weight > EPS,
+    (t) =>
+      !isIngotItem(t.item) && (t.minRate > EPS || t.weight > EPS),
   );
 
   const userExcess = new Map<ItemId, number>();
   for (const e of input.excess) {
-    if (e.rate > EPS) {
+    if (e.rate > EPS && !isIngotItem(e.item)) {
       userExcess.set(e.item, Math.max(userExcess.get(e.item) ?? 0, e.rate));
     }
   }
@@ -430,6 +569,7 @@ export function solve(input: PlannerInput): SolveResult {
       );
       let bumped = false;
       for (const [item, rate] of reconciled) {
+        if (isIngotItem(item)) continue;
         const prev = excessRates.get(item) ?? 0;
         if (rate <= prev + EPS) continue;
         excessRates.set(item, rate);
@@ -450,15 +590,19 @@ export function solve(input: PlannerInput): SolveResult {
   }
 
   // Phase C — complexity-first auto excess to soak leftover raws.
+  // Ingots are never soak sinks; leftover ore must become useful parts.
   const chainRoots = [
     ...targets.map((t) => t.item),
     ...userExcess.keys(),
   ];
-  const intermediates = collectChainIntermediates(chainRoots);
+  const intermediates = collectChainIntermediates(chainRoots).filter(
+    (id) => !isIngotItem(id),
+  );
 
   const soakCandidates = new Set<ItemId>(intermediates);
   for (const id of manufacturedItemIds) {
     if (targets.some((t) => t.item === id)) continue;
+    if (isIngotItem(id)) continue;
     const coeffs = exactRawCoefficients(id);
     const uses = Object.keys(coeffs) as ItemId[];
     if (uses.length === 0) continue;
@@ -510,16 +654,85 @@ export function solve(input: PlannerInput): SolveResult {
     }
   }
 
+  // Phase C1 — convert leftover ingot production into downstream parts.
+  // Machine quantization / ore soak can leave unused ingots; never leave
+  // those as storage overflow when a useful consumer can take them.
+  if (feasible) {
+    let guard = 0;
+    while (guard++ < 80) {
+      const leftoverIngots = leftoverIngotsFromPlan(
+        buildSinks(),
+        maxBeltCapacity,
+      );
+      const ingotIdsWithLeftover = [...leftoverIngots.entries()]
+        .filter(([, rate]) => rate > EPS)
+        .map(([id]) => id)
+        .sort(
+          (a, b) =>
+            (leftoverIngots.get(b) ?? 0) - (leftoverIngots.get(a) ?? 0) ||
+            a.localeCompare(b),
+        );
+      if (ingotIdsWithLeftover.length === 0) break;
+
+      let progressed = false;
+      for (const ingot of ingotIdsWithLeftover) {
+        const before = leftoverIngots.get(ingot) ?? 0;
+        for (const item of fillOrder) {
+          if (!consumesItem(item, ingot)) continue;
+          const current = excessRates.get(item) ?? 0;
+          const rates = collectIngotConversionRates(
+            item,
+            current,
+            before,
+            ingot,
+          );
+          if (rates.length === 0) continue;
+
+          for (const rate of rates) {
+            excessRates.set(item, rate);
+            if (!planFitsAvailable(buildSinks(), available, maxBeltCapacity)) {
+              excessRates.set(item, current);
+              continue;
+            }
+            const after =
+              leftoverIngotsFromPlan(buildSinks(), maxBeltCapacity).get(
+                ingot,
+              ) ?? 0;
+            if (after + EPS < before) {
+              progressed = true;
+              break;
+            }
+            excessRates.set(item, current);
+          }
+          if (progressed) break;
+        }
+        if (progressed) break;
+      }
+      if (!progressed) break;
+    }
+  }
+
   // Phase D — re-sync surplus excess after soak reshapes crafts/destinations.
   if (feasible) {
     applyShareabilityExcess(4);
   }
 
-  let final = expandSinks(buildSinks(), maxBeltCapacity);
+  // Drop any ingot excess that reconcile/soak may have introduced.
+  for (const id of [...excessRates.keys()]) {
+    if (isIngotItem(id)) excessRates.delete(id);
+  }
+
+  const final = expandSinks(buildSinks(), maxBeltCapacity);
+  const unusedIngotRaws = rawsLockedInLeftoverIngots(
+    buildSinks(),
+    maxBeltCapacity,
+  );
 
   const finalRaws: RawUtilization[] = scarceRawIds.map((item) => {
     const avail = available.get(item) ?? 0;
-    const used = final.raws.get(item) ?? 0;
+    const extracted = final.raws.get(item) ?? 0;
+    // Ore sitting in unused ingots is not utilized
+    const used = Math.max(0, extracted - (unusedIngotRaws.get(item) ?? 0));
     return {
       item,
       available: avail,

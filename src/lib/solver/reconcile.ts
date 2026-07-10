@@ -48,6 +48,8 @@ export function reconcileProductionShares(
   for (const stage of stages) {
     const item = stage.primaryOutput;
     if (!getRecipeForProduct(item)) continue;
+    // Ingots have no building utility — never schedule as excess overflow.
+    if (itemById[item]?.isIngot) continue;
 
     const demand = productionByItem.get(item) ?? 0;
     const produced = stage.outputPerMinute;

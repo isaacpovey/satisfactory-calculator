@@ -1,7 +1,6 @@
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import { buildings, itemById } from "@/data/items";
 import {
-  getRecipeForProduct,
   recipes as allRecipes,
   recipeCyclesPerMinute,
   recipePrimaryOutputPerMinute,
@@ -155,12 +154,15 @@ function nearestFriendlyAtMost(n: number): number {
 /**
  * Pack machine banks per destination, then form belt-capped output lanes that
  * each feed exactly one destination (leftover on a lane → overflow to storage).
+ * When `forbidExcess` is set (ingot stages), lane leftovers stay on the
+ * production destination instead of overflowing to storage.
  */
 export function packDestinationOutputs(
   recipe: Recipe,
   destinations: DestinationDemand[],
   maxBelt: number,
   surplusRate: number = 0,
+  forbidExcess: boolean = false,
 ): { groups: MachineGroupPlan[]; outputMerges: MergePlan[] } {
   const primaryPerMachine = recipePrimaryOutputPerMinute(recipe);
   if (primaryPerMachine <= EPS) {
@@ -196,16 +198,22 @@ export function packDestinationOutputs(
     for (const merge of localMerges) {
       const take = Math.min(remainingDemand, merge.rate);
       remainingDemand -= take;
-      const laneTo =
-        take > EPS
-          ? to
-          : ({ kind: "excess", id: recipe.outputs[0]!.item } as const);
-      outputMerges.push({
-        ...merge,
-        sourceBankIndexes: merge.sourceBankIndexes.map((i) => i + bankOffset),
-        to: laneTo,
-        consumerRate: take,
-      });
+      if (take > EPS || forbidExcess) {
+        outputMerges.push({
+          ...merge,
+          sourceBankIndexes: merge.sourceBankIndexes.map((i) => i + bankOffset),
+          to,
+          // Ingots: assign the whole lane to the consumer (no storage dump).
+          consumerRate: forbidExcess ? merge.rate : take,
+        });
+      } else {
+        outputMerges.push({
+          ...merge,
+          sourceBankIndexes: merge.sourceBankIndexes.map((i) => i + bankOffset),
+          to: { kind: "excess", id: recipe.outputs[0]!.item },
+          consumerRate: 0,
+        });
+      }
     }
     allConfigs.push(...configs);
     bankOffset += configs.length;
@@ -219,7 +227,7 @@ export function packDestinationOutputs(
     appendPack(configs, dest.to, dest.rate);
   }
 
-  if (surplusRate > EPS) {
+  if (surplusRate > EPS && !forbidExcess) {
     const needEff = surplusRate / primaryPerMachine;
     const configs = packMachineBanks(recipe, needEff, {
       maxBeltCapacity: maxBelt,
@@ -296,12 +304,15 @@ export function buildStages(
       recipeCrafts,
       targetRates,
     );
+    const isIngot = itemById[primary.item]?.isIngot === true;
     const demandSum = dests.reduce((s, d) => s + d.rate, 0);
-    const excessFloor = excessRates.get(primary.item) ?? 0;
+    const excessFloor = isIngot ? 0 : (excessRates.get(primary.item) ?? 0);
     const leftoverProd = Math.max(0, outputFromCrafts - demandSum);
-    // Pure excess stage (no production consumers): pack for excess/crafts
-    const surplusForExcess =
-      dests.length === 0
+    // Pure excess stage (no production consumers): pack for excess/crafts.
+    // Ingots never overflow to storage — surplus is converted downstream.
+    const surplusForExcess = isIngot
+      ? 0
+      : dests.length === 0
         ? Math.max(leftoverProd, excessFloor, outputFromCrafts)
         : leftoverProd;
 
@@ -314,6 +325,7 @@ export function buildStages(
         dests,
         maxBeltCapacity,
         surplusForExcess,
+        isIngot,
       );
       groups = packed.groups;
       outputMerges = packed.outputMerges;
@@ -338,7 +350,9 @@ export function buildStages(
       }));
     }
 
-    // Cover any craft shortfall from destination packing under-coverage
+    // Cover any craft shortfall from destination packing under-coverage.
+    // For ingots, attach the shortfall pack to the largest production
+    // destination instead of overflowing to storage.
     const packedEff = groups.reduce((s, g) => s + g.effectiveMachines, 0);
     if (packedEff + EPS < needEff) {
       const extra = packMachineBanks(recipe, needEff - packedEff, {
@@ -358,12 +372,16 @@ export function buildStages(
         extra.map((c) => primaryPerMachine * c.effectiveMachines),
         maxBeltCapacity,
       );
+      const fallbackDest =
+        isIngot && dests.length > 0
+          ? [...dests].sort((a, b) => b.rate - a.rate)[0]!.to
+          : ({ kind: "excess" as const, id: primary.item } as const);
       for (const m of extraMerges) {
         outputMerges.push({
           ...m,
           sourceBankIndexes: m.sourceBankIndexes.map((i) => i + offset),
-          to: { kind: "excess", id: primary.item },
-          consumerRate: 0,
+          to: fallbackDest,
+          consumerRate: isIngot ? m.rate : 0,
         });
       }
     }

@@ -219,7 +219,54 @@ describe("solve", () => {
     expect(result.overallUtilization).toBeGreaterThan(0.995);
   });
 
-  it("prefers complex excess over base ingots when soaking", () => {
+  /** Snapshot of live planner localStorage (satisfactory-planner:v1). */
+  it("browser planner config: solves without negative nets", () => {
+    const result = solve({
+      rawAvailable: {
+        "iron-ore": 1860,
+        "copper-ore": 540,
+        limestone: 420,
+        coal: 360,
+        "caterium-ore": 120,
+        "raw-quartz": 0,
+        sulfur: 0,
+      },
+      targets: [
+        { item: "motor", minRate: 2, weight: 20 },
+        { item: "encased-industrial-beam", minRate: 2, weight: 60 },
+        { item: "versatile-framework", minRate: 2, weight: 50 },
+        { item: "automated-wiring", minRate: 2, weight: 50 },
+      ],
+      excess: [
+        { item: "steel-beam", rate: 5 },
+        { item: "steel-pipe", rate: 5 },
+        { item: "iron-rod", rate: 5 },
+        { item: "iron-plate", rate: 5 },
+        { item: "screw", rate: 5 },
+        { item: "cable", rate: 5 },
+        { item: "stator", rate: 5 },
+        { item: "ai-limiter", rate: 5 },
+        { item: "rotor", rate: 5 },
+        { item: "reinforced-iron-plate", rate: 5 },
+        { item: "smart-plating", rate: 20 },
+        { item: "wire", rate: 5 },
+        { item: "quickwire", rate: 5 },
+        { item: "modular-frame", rate: 5 },
+        { item: "copper-sheet", rate: 5 },
+        { item: "concrete", rate: 5 },
+      ],
+      maxBeltCapacity: 270,
+    });
+    expect(result.feasible).toBe(true);
+    for (const r of result.raws) {
+      expect(r.used).toBeLessThanOrEqual(r.available + 1e-6);
+    }
+    for (const flow of result.items) {
+      expect(flow.net).toBeGreaterThanOrEqual(-1e-6);
+    }
+  });
+
+  it("never soaks leftover ore into ingots", () => {
     const result = solve({
       rawAvailable: {
         "iron-ore": 300,
@@ -232,11 +279,52 @@ describe("solve", () => {
     expect(result.feasible).toBe(true);
     const withAuto = result.excess.filter((e) => e.rate > 0);
     expect(withAuto.length).toBeGreaterThan(0);
-    // Should not only dump into iron ingots if deeper parts can take ore
+    expect(withAuto.every((e) => !e.item.includes("ingot"))).toBe(true);
     const deepest = withAuto[0]!;
-    // Most complex soakable part should rank above base ingots
     expect(deepest.item).not.toBe("iron-ingot");
     expect(deepest.item).not.toBe("copper-ingot");
+  });
+
+  it("converts leftover steel ingots into useful parts", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 240, coal: 240 },
+      targets: [{ item: "steel-beam", minRate: 10, weight: 0 }],
+      excess: [],
+    });
+    expect(result.feasible).toBe(true);
+    // Never schedule ingots as excess sinks
+    expect(
+      result.excess.every((e) => e.rate < 1e-6 || !e.item.includes("ingot")),
+    ).toBe(true);
+    // Ore soak should land on useful parts (pipes/frames/etc.), not ingots
+    expect(
+      result.excess.some((e) => e.rate > 0 && !e.item.includes("ingot")),
+    ).toBe(true);
+    // Quantization may leave a tiny irreducible ingot residual, but not a
+    // planned soak dump (previously ~27.5 steel ingot/min excess).
+    const ingotFlow = result.items.find((i) => i.item === "steel-ingot");
+    expect(ingotFlow).toBeDefined();
+    expect(ingotFlow!.net).toBeLessThan(5);
+  });
+
+  it("does not count unused ingots toward ore utilization", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 120 },
+      targets: [
+        { item: "iron-plate", minRate: 20, weight: 0 },
+        { item: "iron-rod", minRate: 15, weight: 0 },
+      ],
+      excess: [],
+    });
+    const iron = result.raws.find((r) => r.item === "iron-ore")!;
+    const ingotNet =
+      result.items.find((i) => i.item === "iron-ingot")?.net ?? 0;
+    // Any unused iron ingots (1:1 with ore) must be excluded from used
+    expect(iron.used).toBeCloseTo(120 - Math.max(0, ingotNet), 6);
+    expect(iron.leftover).toBeCloseTo(Math.max(0, ingotNet), 6);
+    if (ingotNet > 1e-6) {
+      expect(iron.utilization).toBeLessThan(1);
+    }
   });
 
   it("respects user excess floors and may raise them", () => {
@@ -263,7 +351,10 @@ describe("solve", () => {
     const ids = result.excess.map((e) => e.item);
     expect(ids).toContain("rotor");
     expect(ids).toContain("stator");
-    expect(ids).toContain("iron-ingot");
+    // Ingots are never excess sinks — only useful parts
+    expect(ids).not.toContain("iron-ingot");
+    expect(ids).not.toContain("copper-ingot");
+    expect(ids).not.toContain("steel-ingot");
   });
 
   it("plans crystal oscillator with manufacturer recipe", () => {

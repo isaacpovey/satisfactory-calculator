@@ -18,8 +18,8 @@ export const items: Item[] = [
   { id: "caterium-ore", name: "Caterium Ore", isRaw: true, tier: 0 },
   { id: "raw-quartz", name: "Raw Quartz", isRaw: true, tier: 0 },
   { id: "sulfur", name: "Sulfur", isRaw: true, tier: 0 },
-  { id: "iron-ingot", name: "Iron Ingot", isRaw: false, tier: 0 },
-  { id: "copper-ingot", name: "Copper Ingot", isRaw: false, tier: 0 },
+  { id: "iron-ingot", name: "Iron Ingot", isRaw: false, isIngot: true, tier: 0 },
+  { id: "copper-ingot", name: "Copper Ingot", isRaw: false, isIngot: true, tier: 0 },
   { id: "iron-plate", name: "Iron Plate", isRaw: false, tier: 0 },
   { id: "iron-rod", name: "Iron Rod", isRaw: false, tier: 0 },
   { id: "screw", name: "Screws", isRaw: false, tier: 0 },
@@ -36,7 +36,7 @@ export const items: Item[] = [
   { id: "rotor", name: "Rotor", isRaw: false, tier: 2 },
   { id: "modular-frame", name: "Modular Frame", isRaw: false, tier: 2 },
   { id: "smart-plating", name: "Smart Plating", isRaw: false, tier: 2 },
-  { id: "steel-ingot", name: "Steel Ingot", isRaw: false, tier: 3 },
+  { id: "steel-ingot", name: "Steel Ingot", isRaw: false, isIngot: true, tier: 3 },
   { id: "steel-beam", name: "Steel Beam", isRaw: false, tier: 3 },
   { id: "steel-pipe", name: "Steel Pipe", isRaw: false, tier: 3 },
   {
@@ -54,7 +54,7 @@ export const items: Item[] = [
   { id: "stator", name: "Stator", isRaw: false, tier: 4 },
   { id: "motor", name: "Motor", isRaw: false, tier: 4 },
   { id: "automated-wiring", name: "Automated Wiring", isRaw: false, tier: 4 },
-  { id: "caterium-ingot", name: "Caterium Ingot", isRaw: false, tier: 0 },
+  { id: "caterium-ingot", name: "Caterium Ingot", isRaw: false, isIngot: true, tier: 0 },
   { id: "quickwire", name: "Quickwire", isRaw: false, tier: 0 },
   { id: "ai-limiter", name: "AI Limiter", isRaw: false, tier: 0 },
   { id: "quartz-crystal", name: "Quartz Crystal", isRaw: false, tier: 0 },
@@ -79,7 +79,12 @@ export const scarceRawIds: ItemId[] = items
   .filter((item) => item.isRaw && !item.isUnlimited)
   .map((item) => item.id);
 
+/** Smelted intermediates — never end products or excess sinks */
+export const ingotIds: ItemId[] = items
+  .filter((item) => item.isIngot)
+  .map((item) => item.id);
+
 /** Manufactured parts that can be selected as end products or excess sinks */
 export const manufacturedItemIds: ItemId[] = items
-  .filter((item) => !item.isRaw)
+  .filter((item) => !item.isRaw && !item.isIngot)
   .map((item) => item.id);

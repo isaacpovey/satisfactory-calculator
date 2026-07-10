@@ -47,6 +47,8 @@ function sanitizeTargets(value: unknown): TargetSpec[] | null {
     if (!entry || typeof entry !== "object") continue;
     const row = entry as Record<string, unknown>;
     if (!isItemId(row.item)) continue;
+    // Ingots are not valid end products
+    if (itemById[row.item]?.isIngot) continue;
     const minRate = sanitizeNumber(row.minRate);
     const weight = sanitizeNumber(row.weight);
     if (minRate === null || weight === null) continue;
@@ -62,7 +64,14 @@ function sanitizeTargets(value: unknown): TargetSpec[] | null {
 function sanitizeExcessFloors(
   value: unknown,
 ): Partial<Record<ItemId, number>> | null {
-  return sanitizeRaws(value);
+  const raw = sanitizeRaws(value);
+  if (!raw) return null;
+  const out: Partial<Record<ItemId, number>> = {};
+  for (const [id, rate] of Object.entries(raw) as [ItemId, number][]) {
+    if (itemById[id]?.isIngot) continue;
+    out[id] = rate;
+  }
+  return out;
 }
 
 export function loadPlannerState(): PlannerPersistedState | null {

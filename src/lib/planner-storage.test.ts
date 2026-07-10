@@ -63,7 +63,7 @@ describe("planner-storage", () => {
     expect(window.localStorage.getItem(PLANNER_STORAGE_KEY)).toBeTruthy();
   });
 
-  it("drops unknown items and invalid numbers", () => {
+  it("drops unknown items, ingots, and invalid numbers", () => {
     window.localStorage.setItem(
       PLANNER_STORAGE_KEY,
       JSON.stringify({
@@ -73,8 +73,9 @@ describe("planner-storage", () => {
           { item: "motor", minRate: 2, weight: 60 },
           { item: "bogus", minRate: 1, weight: 1 },
           { item: "concrete", minRate: -3, weight: 150 },
+          { item: "iron-ingot", minRate: 10, weight: 50 },
         ],
-        excessFloors: { stator: 5, nope: 1 },
+        excessFloors: { stator: 5, nope: 1, "steel-ingot": 20 },
       }),
     );
 
