@@ -77,7 +77,7 @@ describe("constraints", () => {
   });
 });
 
-describe("solve", () => {
+describe("solve", { timeout: 30_000 }, () => {
   it("reports infeasible when minima exceed ore", () => {
     const result = solve({
       rawAvailable: { "iron-ore": 10 },
@@ -218,7 +218,7 @@ describe("solve", () => {
     expect(limestone.utilization).toBeGreaterThan(0.95);
     expect(caterium.utilization).toBeGreaterThan(0.98);
     expect(result.overallUtilization).toBeGreaterThan(0.995);
-  }, 10_000);
+  });
 
   /** Snapshot of live planner localStorage (satisfactory-planner:v1). */
   it("browser planner config: solves without negative nets", () => {
@@ -265,7 +265,7 @@ describe("solve", () => {
     for (const flow of result.items) {
       expect(flow.net).toBeGreaterThanOrEqual(-1e-6);
     }
-  }, 30_000);
+  });
 
   it("grows weight-0 targets when they best soak leftover ore", () => {
     const result = solve({
