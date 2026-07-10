@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  or-tools-wasm@0.9.1:
+    hash: 74e296f27a8ba2a69a5eb1f0fe460afd7621673eec85411338be736eeb03a41d
+    path: patches/or-tools-wasm@0.9.1.patch
+
 importers:
 
   .:
@@ -25,7 +30,7 @@ importers:
         version: 16.2.10(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       or-tools-wasm:
         specifier: ^0.9.1
-        version: 0.9.1
+        version: 0.9.1(patch_hash=74e296f27a8ba2a69a5eb1f0fe460afd7621673eec85411338be736eeb03a41d)
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -4026,7 +4031,7 @@ snapshots:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  or-tools-wasm@0.9.1:
+  or-tools-wasm@0.9.1(patch_hash=74e296f27a8ba2a69a5eb1f0fe460afd7621673eec85411338be736eeb03a41d):
     dependencies:
       protobufjs: 7.6.5
 

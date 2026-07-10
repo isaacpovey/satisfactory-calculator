@@ -1,0 +1,2 @@
+patchedDependencies:
+  or-tools-wasm@0.9.1: patches/or-tools-wasm@0.9.1.patch

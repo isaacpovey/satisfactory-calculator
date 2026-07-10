@@ -1,0 +1,13 @@
+diff --git a/build/javascript/browser/runtime_loader.js b/build/javascript/browser/runtime_loader.js
+index bb3540eaed5fdcc9671598a0e3e7e80380b935eb..fdf89e2266be2922ec61a1175954fea23c75ac79 100644
+--- a/build/javascript/browser/runtime_loader.js
++++ b/build/javascript/browser/runtime_loader.js
+@@ -83,7 +83,7 @@ async function loadFactory(runtimeUrl) {
+   return createModule;
+ }
+ function runtimeAssetName(url) {
+-  return (new URL(url).pathname.split("/").pop() ?? "").replace(/-[A-Za-z0-9_-]+(?=\.(?:js|wasm)$)/, "");
++  return (new URL(url, globalThis.location?.href).pathname.split("/").pop() ?? "").replace(/-[A-Za-z0-9_-]+(?=\.(?:js|wasm)$)/, "");
+ }
+ function locateRuntimeFile(fileName) {
+   for (const flavors of Object.values(runtimeAssets))
