@@ -22,8 +22,11 @@ import {
   FlowEndpointLink,
   ItemFlowLink,
 } from "@/components/planner/flow-endpoint-link";
+import { MergePlanDisplay } from "@/components/planner/merge-plan-display";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
 import { MachineGroupCard } from "@/components/planner/machine-group-card";
+import { DownstreamLanes } from "@/components/planner/downstream-lanes";
+import { StageInputBelts } from "@/components/planner/stage-input-belts";
 
 interface ResultsPanelProps {
   result: SolveResult | null;
@@ -169,90 +172,19 @@ function UtilMeter({
   );
 }
 
-function FlowChip({ edge }: { edge: FlowEdge }) {
-  const kindTone =
-    edge.to.kind === "target"
-      ? "border-l-2 border-l-primary bg-primary/8 text-foreground ring-primary/20"
-      : edge.to.kind === "excess"
-        ? "border-l-2 border-l-accent-foreground/50 bg-accent/35 text-foreground ring-accent-foreground/15"
-        : "bg-card text-foreground ring-foreground/10";
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-lg px-3 py-2 ring-1",
-        kindTone,
-      )}
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="text-sm font-medium">
-          <FlowEndpointLink
-            kind={edge.to.kind}
-            id={edge.to.id}
-            embedded
-          />
-        </span>
-        <span className="text-sm font-semibold tabular-nums">
-          {formatRate(edge.rate)}/min
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs text-muted-foreground">
-          <ItemFlowLink itemId={edge.item} embedded />
-        </p>
-        <SplitterPlanDisplay
-          plan={edge.outputSplit}
-          variant="output"
-          embedded
-        />
-      </div>
-    </div>
-  );
-}
-
-function InputFlowRow({ edge }: { edge: FlowEdge }) {
-  return (
-    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/50 px-3 py-2 ring-1 ring-foreground/6">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <span className="text-sm font-medium">
-          <ItemFlowLink itemId={edge.item} />
-        </span>
-        <span className="text-sm font-semibold tabular-nums">
-          {formatRate(edge.rate)}/min
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        from{" "}
-        <FlowEndpointLink
-          kind={edge.from.kind === "raw" ? "raw" : "stage"}
-          id={edge.from.id}
-          label={formatEndpoint(
-            edge.from.kind === "raw" ? "raw" : "recipe",
-            edge.from.id,
-          )}
-        />
-      </p>
-      {!edge.outputSplit.mergeOnly ? (
-        <SplitterPlanDisplay plan={edge.outputSplit} variant="output" />
-      ) : null}
-    </div>
-  );
-}
-
 function StageCard({
   stage,
   network,
   stageChanged,
+  maxBeltCapacity,
 }: {
   stage: ProductionStage;
   network: FactoryNetwork;
   stageChanged: boolean;
+  maxBeltCapacity: number;
 }) {
   const outgoing = network.edges.filter(
     (e) => e.from.kind === "stage" && e.from.id === stage.recipeId,
-  );
-  const incoming = network.edges.filter(
-    (e) => e.to.kind === "recipe" && e.to.id === stage.recipeId,
   );
 
   return (
@@ -289,52 +221,65 @@ function StageCard({
         </p>
       </header>
 
-      <div className="flex flex-col gap-4 p-4">
-        {incoming.length > 0 ? (
-          <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-6 p-4 sm:p-5">
+        <StageInputBelts
+          belts={stage.inputBelts}
+          maxBeltCapacity={maxBeltCapacity}
+        />
+
+        <div className="flex flex-col gap-3">
+          <div>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Inputs
+              Machine banks
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {incoming.map((edge, i) => (
-                <InputFlowRow
-                  key={`in-${edge.item}-${edge.from.kind}-${edge.from.id}-${i}`}
-                  edge={edge}
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              In-bank splitter manifold after the input belt arrives
+            </p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {stage.groups.map((g, i) => (
+              <MachineGroupCard
+                key={`${stage.recipeId}-g-${i}`}
+                recipeId={stage.recipeId}
+                group={g}
+                bankIndex={i}
+                inputBelts={stage.inputBelts}
+                maxBeltCapacity={maxBeltCapacity}
+              />
+            ))}
+          </div>
+        </div>
+
+        {stage.outputMerges.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Output belts
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Per-destination belts from dedicated machine banks; mergers
+                only combine banks feeding the same destination
+              </p>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {stage.outputMerges.map((merge, i) => (
+                <MergePlanDisplay
+                  key={`${stage.recipeId}-merge-${i}`}
+                  plan={merge}
+                  itemId={stage.primaryOutput}
+                  laneIndex={i}
                 />
               ))}
             </div>
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Machine groups
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {stage.groups.map((g, i) => (
-              <MachineGroupCard
-                key={`${stage.recipeId}-g-${i}`}
-                recipeId={stage.recipeId}
-                group={g}
-              />
-            ))}
-          </div>
-        </div>
-
-        {outgoing.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Outputs
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {outgoing.map((edge, i) => (
-                <FlowChip
-                  key={`${edge.item}-${edge.to.kind}-${edge.to.id}-${i}`}
-                  edge={edge}
-                />
-              ))}
-            </div>
-          </div>
+        {outgoing.length > 0 || stage.outputMerges.length > 0 ? (
+          <DownstreamLanes
+            itemId={stage.primaryOutput}
+            lanes={stage.outputMerges}
+            edges={outgoing}
+          />
         ) : null}
       </div>
     </article>
@@ -542,6 +487,7 @@ export function ResultsPanel({
                             stage={stage}
                             network={network}
                             stageChanged={changes.stages.has(stage.recipeId)}
+                            maxBeltCapacity={result.maxBeltCapacity}
                           />
                         ))}
                       </div>

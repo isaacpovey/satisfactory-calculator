@@ -5,6 +5,7 @@ import {
   friendlyRatio,
   isSplitterFriendlyCount,
   isSplitterFriendlyRatio,
+  minParentForFriendlyShares,
   nextExcessAbove,
   quantizeItemRate,
   representMachines,
@@ -157,5 +158,12 @@ describe("quantize and splitters", () => {
     expect(nextExcessAbove(0, 100, 30)).toBeCloseTo(10);
     expect(nextExcessAbove(10, 100, 30)).toBeCloseTo(15);
     expect(nextExcessAbove(15, 100, 30)).toBeCloseTo(30);
+  });
+
+  it("finds a parent belt where every demand is a friendly share", () => {
+    const parent = minParentForFriendlyShares([20, 30]);
+    expect(parent).toBeGreaterThanOrEqual(50 - 1e-9);
+    expect(isSplitterFriendlyRatio(20, parent)).toBe(true);
+    expect(isSplitterFriendlyRatio(30, parent)).toBe(true);
   });
 });

@@ -357,5 +357,98 @@ describe("solve", () => {
       }
     }
   });
+
+  it("packs only splitter-friendly banks and never programmable production splits", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 480, "copper-ore": 120 },
+      targets: [
+        { item: "iron-plate", minRate: 40, weight: 0 },
+        { item: "iron-rod", minRate: 30, weight: 0 },
+      ],
+      excess: [],
+      maxBeltCapacity: 120,
+    });
+    expect(result.feasible).toBe(true);
+    for (const stage of result.network.stages) {
+      for (const g of stage.groups) {
+        expect(g.machines === 1 || isSplitterFriendlyCount(g.machines)).toBe(
+          true,
+        );
+        expect(g.inputSplit.overflowToStorage).toBeFalsy();
+        if (!g.inputSplit.mergeOnly) {
+          expect(g.inputSplit.ratio).not.toBeNull();
+        }
+      }
+      expect(stage.outputMerges.length).toBeGreaterThan(0);
+    }
+    for (const edge of result.network.edges) {
+      if (edge.to.kind === "recipe" || edge.to.kind === "target") {
+        // Production never uses programmable overflow-to-storage
+        expect(edge.outputSplit.overflowToStorage).toBeFalsy();
+        // Shared production splits must be friendly (or sole / after-overflow)
+        if (
+          !edge.outputSplit.mergeOnly &&
+          !edge.outputSplit.restAfterOverflow
+        ) {
+          expect(edge.outputSplit.ratio).not.toBeNull();
+        }
+      }
+    }
+  });
+
+  it("assigns each destination its own output belts", () => {
+    const result = solve({
+      rawAvailable: { "copper-ore": 600 },
+      targets: [
+        { item: "copper-sheet", minRate: 90, weight: 0 },
+        { item: "wire", minRate: 200, weight: 0 },
+      ],
+      excess: [],
+      maxBeltCapacity: 270,
+    });
+    const stage = result.network.stages.find(
+      (s) => s.recipeId === "copper-ingot",
+    )!;
+    expect(stage.outputMerges.length).toBeGreaterThan(1);
+    // Each lane has at most one production destination (may span multiple belts)
+    for (const lane of stage.outputMerges) {
+      expect(lane.to).toBeDefined();
+    }
+    const destIds = new Set(
+      stage.outputMerges
+        .filter((m) => m.to && m.to.kind !== "excess")
+        .map((m) => m.to!.id),
+    );
+    expect(destIds.size).toBeGreaterThanOrEqual(2);
+    const outs = result.network.edges.filter(
+      (e) =>
+        e.from.kind === "stage" &&
+        e.from.id === "copper-ingot" &&
+        (e.to.kind === "recipe" || e.to.kind === "target"),
+    );
+    expect(outs.every((e) => e.fromLaneIndex != null)).toBe(true);
+    for (const e of outs) {
+      expect(
+        e.outputSplit.mergeOnly || e.outputSplit.restAfterOverflow,
+      ).toBe(true);
+    }
+  });
+
+  it("may mark excess branches as overflow to storage", () => {
+    const result = solve({
+      rawAvailable: { "iron-ore": 240 },
+      targets: [{ item: "iron-plate", minRate: 20, weight: 0 }],
+      excess: [],
+    });
+    const excessEdges = result.network.edges.filter(
+      (e) => e.to.kind === "excess",
+    );
+    // Not required every solve, but when unfriendly the flag must be set
+    for (const e of excessEdges) {
+      if (!e.outputSplit.mergeOnly && e.outputSplit.ratio === null) {
+        expect(e.outputSplit.overflowToStorage).toBe(true);
+      }
+    }
+  });
 });
 

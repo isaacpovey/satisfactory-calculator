@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import { itemById, scarceRawIds } from "@/data/items";
 import {
   getRecipeForProduct,
@@ -6,14 +7,16 @@ import {
   recipes as allRecipes,
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
-import {
-  representMachinesMulti,
-  totalEffectiveMachines,
-} from "./constraints";
+import { totalEffectiveMachines } from "./constraints";
+import { packMachineBanks } from "./pack-banks";
 
 const EPS = 1e-9;
 
 export type RateMap = Map<ItemId, number>;
+
+export interface ExpandOptions {
+  maxBeltCapacity?: number;
+}
 
 export function addRate(map: RateMap, item: ItemId, amount: number): void {
   if (Math.abs(amount) < EPS) return;
@@ -22,8 +25,8 @@ export function addRate(map: RateMap, item: ItemId, amount: number): void {
 
 /**
  * Expand demand for `itemId` at `rate` items/min into recipe crafts/min
- * and scarce raw consumption. Each stage is rounded up to a splitter-friendly
- * machine count (2^a·3^b) at an allowed clock (100/75/50/25%).
+ * and scarce raw consumption. Each stage is packed into belt-capped,
+ * splitter-friendly machine banks.
  *
  * Prefer {@link expandFactoryPlan} when combining multiple sinks so shared
  * intermediates are quantized once.
@@ -34,6 +37,7 @@ export function expandDemandToMaps(
   recipeCraftsPerMin: Map<string, number>,
   rawConsumption: RateMap,
   stack: Set<ItemId> = new Set(),
+  opts: ExpandOptions = {},
 ): void {
   if (rate <= EPS) return;
 
@@ -65,8 +69,8 @@ export function expandDemandToMaps(
 
   const outputPerMinutePerMachine = recipePrimaryOutputPerMinute(recipe);
   const exactMachines = rate / outputPerMinutePerMachine;
-  const groups = representMachinesMulti(exactMachines, {
-    anyMachineCount: true,
+  const groups = packMachineBanks(recipe, exactMachines, {
+    maxBeltCapacity: opts.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
   });
   const craftsPerMinute =
     totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);
@@ -85,6 +89,7 @@ export function expandDemandToMaps(
       recipeCraftsPerMin,
       rawConsumption,
       stack,
+      opts,
     );
   }
   stack.delete(itemId);
@@ -127,7 +132,9 @@ function addExactDemand(
  */
 export function expandFactoryPlan(
   sinks: { item: ItemId; rate: number }[],
+  opts: ExpandOptions = {},
 ): { recipeCrafts: Map<string, number>; raws: RateMap; demand: RateMap } {
+  const maxBelt = opts.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY;
   const sinkRates: RateMap = new Map();
   for (const sink of sinks) {
     if (sink.rate > EPS) addRate(sinkRates, sink.item, sink.rate);
@@ -150,8 +157,8 @@ export function expandFactoryPlan(
       const recipe = getRecipeForProduct(itemId);
       if (!recipe) continue;
       const base = recipePrimaryOutputPerMinute(recipe);
-      const groups = representMachinesMulti(rate / base, {
-        anyMachineCount: true,
+      const groups = packMachineBanks(recipe, rate / base, {
+        maxBeltCapacity: maxBelt,
       });
       craftsByItem.set(
         itemId,
@@ -193,8 +200,8 @@ export function expandFactoryPlan(
     const recipe = getRecipeForProduct(itemId);
     if (!recipe) continue;
     const base = recipePrimaryOutputPerMinute(recipe);
-    const groups = representMachinesMulti(rate / base, {
-      anyMachineCount: true,
+    const groups = packMachineBanks(recipe, rate / base, {
+      maxBeltCapacity: maxBelt,
     });
     const crafts =
       totalEffectiveMachines(groups) * recipeCyclesPerMinute(recipe);

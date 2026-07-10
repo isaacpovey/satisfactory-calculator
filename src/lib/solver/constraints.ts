@@ -38,6 +38,8 @@ export interface MachineConfig {
 }
 
 export type SplitterStep = "1/2" | "1/3";
+/** Nested merger topology (same 2/3 branching as splitters). */
+export type MergerStep = "2→1" | "3→1";
 
 /** Round effective machines up to the next shared clock quantum (1/12). */
 export function ceilEffectiveMachines(exact: number): number {
@@ -302,6 +304,8 @@ export function quantizeItemRate(
   const base = recipePrimaryOutputPerMinute(recipe);
   if (base <= EPS) return desiredRate;
   const exactMachines = desiredRate / base;
+  // Friendly multi-groups (no belt). Belt-aware packing lives in pack-banks /
+  // expandFactoryPlan; allocate uses packBanksForItemRate when needed.
   const groups = representMachinesMulti(exactMachines, opts);
   return totalEffective(groups) * base;
 }
@@ -401,6 +405,10 @@ export function splitStepsForCount(n: number): SplitterStep[] {
     }
   }
   return steps;
+}
+
+export function mergerStepsForCount(n: number): MergerStep[] {
+  return splitStepsForCount(n).map((s) => (s === "1/2" ? "2→1" : "3→1"));
 }
 
 /**
@@ -515,6 +523,32 @@ export function snapExcessBranch(
     }
   }
   return best;
+}
+
+/**
+ * Smallest parent belt rate P ≥ sum(demands) such that every demand is a
+ * splitter-friendly fraction of P. Extra P − sum is overflow/excess capacity.
+ */
+export function minParentForFriendlyShares(demands: number[]): number {
+  const parts = demands.filter((d) => d > EPS);
+  const sum = parts.reduce((a, b) => a + b, 0);
+  if (parts.length === 0) return 0;
+  if (parts.length === 1) return sum;
+  if (parts.every((d) => isSplitterFriendlyRatio(d, sum))) return sum;
+
+  let best = Number.POSITIVE_INFINITY;
+  for (const den of SPLITTER_FRIENDLY_COUNTS) {
+    for (const di of parts) {
+      for (let num = 1; num <= den; num++) {
+        const parent = (di * den) / num;
+        if (parent + EPS < sum) continue;
+        if (parts.every((dj) => isSplitterFriendlyRatio(dj, parent))) {
+          if (parent < best) best = parent;
+        }
+      }
+    }
+  }
+  return Number.isFinite(best) ? best : sum;
 }
 
 /**

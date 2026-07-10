@@ -49,6 +49,7 @@ describe("planner-storage", () => {
       rawAvailable: { "iron-ore": 1860, limestone: 420 },
       targets: [{ item: "concrete", minRate: 5, weight: 50 }],
       excessFloors: { "iron-rod": 5 },
+      maxBeltCapacity: 120,
     });
 
     const loaded = loadPlannerState();
@@ -57,6 +58,7 @@ describe("planner-storage", () => {
       rawAvailable: { "iron-ore": 1860, limestone: 420 },
       targets: [{ item: "concrete", minRate: 5, weight: 50 }],
       excessFloors: { "iron-rod": 5 },
+      maxBeltCapacity: 120,
     });
     expect(window.localStorage.getItem(PLANNER_STORAGE_KEY)).toBeTruthy();
   });
@@ -84,6 +86,7 @@ describe("planner-storage", () => {
         { item: "concrete", minRate: 0, weight: 100 },
       ],
       excessFloors: { stator: 5 },
+      maxBeltCapacity: 270,
     });
   });
 

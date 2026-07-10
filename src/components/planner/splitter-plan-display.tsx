@@ -11,12 +11,13 @@ interface SplitterPlanDisplayProps {
 }
 
 function ratioLabel(plan: SplitPlan): string {
-  if (plan.mergeOnly) return "Full belt";
-  if (!plan.ratio) return "Programmable splitter";
+  if (plan.mergeOnly) return "Takes whole lane";
+  if (plan.overflowToStorage) return "Overflow to storage";
+  if (!plan.ratio) return "Unbuildable split";
   const { num, den } = plan.ratio;
-  if (den === 1 || num === den) return "All belts";
-  if (num === 1) return `1 of ${den} belts`;
-  return `${num} of ${den} belts`;
+  if (den === 1 || num === den) return "Takes whole lane";
+  if (num === 1) return `1 of ${den}`;
+  return `${num} of ${den}`;
 }
 
 function inputPrefix(plan: SplitPlan): string | null {
@@ -38,12 +39,12 @@ export function SplitterPlanDisplay({
   if (plan.mergeOnly) {
     return (
       <Badge variant={fillBadge} className={cn("font-normal", className)}>
-        Full belt
+        Takes whole lane
       </Badge>
     );
   }
 
-  if (!plan.ratio) {
+  if (plan.overflowToStorage) {
     return (
       <Badge
         variant="outline"
@@ -52,7 +53,34 @@ export function SplitterPlanDisplay({
           className,
         )}
       >
-        Programmable splitter
+        Overflow to storage
+      </Badge>
+    );
+  }
+
+  if (plan.restAfterOverflow) {
+    return (
+      <div className={cn("flex flex-col gap-1", className)}>
+        <Badge variant={fillBadge} className="w-fit font-normal">
+          After overflow
+        </Badge>
+        <span className="text-[11px] text-muted-foreground">
+          Remainder of lane after overflow to storage
+        </span>
+      </div>
+    );
+  }
+
+  if (!plan.ratio) {
+    return (
+      <Badge
+        variant="outline"
+        className={cn(
+          "border-destructive/40 bg-destructive/10 font-normal text-destructive",
+          className,
+        )}
+      >
+        Unbuildable split
       </Badge>
     );
   }

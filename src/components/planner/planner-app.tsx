@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
 import type {
   ExcessSpec,
@@ -17,6 +18,7 @@ import { solve } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BeltTierPanel } from "./belt-tier-panel";
 import { RawInputsPanel } from "./raw-inputs-panel";
 import { TargetsPanel } from "./targets-panel";
 import { ExcessPanel } from "./excess-panel";
@@ -42,6 +44,7 @@ function inputFingerprint(input: PlannerInput): string {
     raw: input.rawAvailable,
     targets: input.targets,
     excess: input.excess,
+    maxBeltCapacity: input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
   });
 }
 
@@ -60,6 +63,9 @@ export function PlannerApp() {
   const [excessFloors, setExcessFloors] = useState<
     Partial<Record<ItemId, number>>
   >({});
+  const [maxBeltCapacity, setMaxBeltCapacity] = useState(
+    DEFAULT_MAX_BELT_CAPACITY,
+  );
   const [hydrated, setHydrated] = useState(false);
 
   const [result, setResult] = useState<SolveResult | null>(null);
@@ -76,8 +82,9 @@ export function PlannerApp() {
       rawAvailable,
       targets,
       excess: buildExcessInput(excessFloors),
+      maxBeltCapacity,
     }),
-    [rawAvailable, targets, excessFloors],
+    [rawAvailable, targets, excessFloors, maxBeltCapacity],
   );
 
   const draftFingerprint = useMemo(
@@ -94,6 +101,7 @@ export function PlannerApp() {
       setRawAvailable(saved.rawAvailable);
       setTargets(saved.targets);
       setExcessFloors(saved.excessFloors);
+      setMaxBeltCapacity(saved.maxBeltCapacity);
     }
     setHydrated(true);
   }, []);
@@ -105,8 +113,9 @@ export function PlannerApp() {
       rawAvailable,
       targets,
       excessFloors,
+      maxBeltCapacity,
     });
-  }, [hydrated, rawAvailable, targets, excessFloors]);
+  }, [hydrated, rawAvailable, targets, excessFloors, maxBeltCapacity]);
 
   const runCompute = useCallback((input: PlannerInput) => {
     const gen = ++computeGen.current;
@@ -135,6 +144,7 @@ export function PlannerApp() {
       rawAvailable,
       targets,
       excess: buildExcessInput(excessFloors),
+      maxBeltCapacity,
     });
     // Only on hydrate — later runs are button-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +173,10 @@ export function PlannerApp() {
             onChange={(item, value) =>
               setRawAvailable((prev) => ({ ...prev, [item]: value }))
             }
+          />
+          <BeltTierPanel
+            maxBeltCapacity={maxBeltCapacity}
+            onChange={setMaxBeltCapacity}
           />
           <TargetsPanel targets={targets} onChange={setTargets} />
           <ExcessPanel
@@ -231,8 +245,9 @@ export function PlannerApp() {
       </div>
 
       <footer className="border-t border-foreground/8 pt-4 text-xs text-muted-foreground">
-        Clocks 100 / 75 / 66.67 / 50 / 33.33 / 25% · multi-group machines ·
-        nested 1/2 + 1/3 splits · saved in this browser
+        Clocks 100 / 75 / 66.67 / 50 / 33.33 / 25% · belt-capped machine banks ·
+        nested 1/2 + 1/3 splits & merges · overflow to storage · saved in this
+        browser
       </footer>
     </div>
   );

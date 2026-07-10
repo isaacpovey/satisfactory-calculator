@@ -1,3 +1,8 @@
+import {
+  BELT_TIERS,
+  clampMaxBeltCapacity,
+  DEFAULT_MAX_BELT_CAPACITY,
+} from "@/data/belts";
 import { itemById } from "@/data/items";
 import type { ItemId } from "@/data/types";
 import type { TargetSpec } from "@/lib/solver/types";
@@ -9,6 +14,7 @@ export interface PlannerPersistedState {
   rawAvailable: Partial<Record<ItemId, number>>;
   targets: TargetSpec[];
   excessFloors: Partial<Record<ItemId, number>>;
+  maxBeltCapacity: number;
 }
 
 function isItemId(value: unknown): value is ItemId {
@@ -74,11 +80,19 @@ export function loadPlannerState(): PlannerPersistedState | null {
     const excessFloors = sanitizeExcessFloors(data.excessFloors);
     if (!rawAvailable || !targets || !excessFloors) return null;
 
+    const rawBelt = data.maxBeltCapacity;
+    const maxBeltCapacity =
+      typeof rawBelt === "number" &&
+      BELT_TIERS.some((t) => t.capacity === rawBelt)
+        ? rawBelt
+        : DEFAULT_MAX_BELT_CAPACITY;
+
     return {
       version: 1,
       rawAvailable,
       targets,
       excessFloors,
+      maxBeltCapacity: clampMaxBeltCapacity(maxBeltCapacity),
     };
   } catch {
     return null;

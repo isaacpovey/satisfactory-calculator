@@ -1,3 +1,7 @@
+import {
+  clampMaxBeltCapacity,
+  DEFAULT_MAX_BELT_CAPACITY,
+} from "@/data/belts";
 import { buildings, itemById, manufacturedItemIds, scarceRawIds } from "@/data/items";
 import {
   getRecipeForProduct,
@@ -15,10 +19,10 @@ import {
 import {
   ALLOWED_CLOCKS,
   complexityScore,
-  quantizeItemRate,
-  representMachinesMulti,
 } from "./constraints";
 import { buildFactoryNetwork } from "./network";
+import { quantizeItemRateBeltAware } from "./pack-banks";
+import { reconcileProductionShares } from "./reconcile";
 import type {
   ExcessResult,
   ItemFlow,
@@ -43,6 +47,7 @@ function emptyRawMap(): RateMap {
 
 function expandSinks(
   sinks: { item: ItemId; rate: number }[],
+  maxBeltCapacity: number,
 ): { recipeCrafts: Map<string, number>; raws: RateMap } {
   // Merge identical sink items, then expand as one factory so shared
   // intermediates are machine-quantized once (not once per sink).
@@ -53,14 +58,16 @@ function expandSinks(
   }
   return expandFactoryPlan(
     [...merged.entries()].map(([item, rate]) => ({ item, rate })),
+    { maxBeltCapacity },
   );
 }
 
 function planFitsAvailable(
   sinks: { item: ItemId; rate: number }[],
   available: RateMap,
+  maxBeltCapacity: number,
 ): boolean {
-  const { raws } = expandSinks(sinks);
+  const { raws } = expandSinks(sinks, maxBeltCapacity);
   for (const id of scarceRawIds) {
     if ((raws.get(id) ?? 0) > (available.get(id) ?? 0) + EPS) return false;
   }
@@ -70,8 +77,9 @@ function planFitsAvailable(
 function leftoverFromPlan(
   sinks: { item: ItemId; rate: number }[],
   available: RateMap,
+  maxBeltCapacity: number,
 ): RateMap {
-  const { raws } = expandSinks(sinks);
+  const { raws } = expandSinks(sinks, maxBeltCapacity);
   const leftover = emptyRawMap();
   for (const id of scarceRawIds) {
     leftover.set(
@@ -159,6 +167,7 @@ function largestFittingRate(
   restore: () => void,
   available: RateMap,
   buildSinks: () => { item: ItemId; rate: number }[],
+  maxBeltCapacity: number,
 ): number | null {
   let lo = 0;
   let hi = rates.length - 1;
@@ -167,7 +176,7 @@ function largestFittingRate(
     const mid = (lo + hi) >> 1;
     const rate = rates[mid]!;
     setRate(rate);
-    if (planFitsAvailable(buildSinks(), available)) {
+    if (planFitsAvailable(buildSinks(), available, maxBeltCapacity)) {
       best = rate;
       lo = mid + 1;
     } else {
@@ -224,29 +233,31 @@ function buildItemFlows(
   return flows;
 }
 
-function buildRecipeUsages(recipeCrafts: Map<string, number>): RecipeUsage[] {
+function buildRecipeUsagesFromNetwork(
+  network: ReturnType<typeof buildFactoryNetwork>,
+): RecipeUsage[] {
   const usages: RecipeUsage[] = [];
-  for (const recipe of allRecipes) {
-    const crafts = recipeCrafts.get(recipe.id) ?? 0;
-    if (crafts <= EPS) continue;
-    const exactMachines = crafts / recipeCyclesPerMinute(recipe);
-    const groups = representMachinesMulti(exactMachines, {
-      anyMachineCount: true,
-    });
-    const primary = recipe.outputs[0]!;
-    const cyclesPerMachine = recipeCyclesPerMinute(recipe);
-    groups.forEach((config, groupIndex) => {
-      const groupCrafts = config.effectiveMachines * cyclesPerMachine;
+  for (const stage of network.stages) {
+    const cyclesPerMachine =
+      stage.groups[0] != null && stage.groups[0].effectiveMachines > EPS
+        ? stage.outputPerMinute /
+          stage.groups.reduce((s, g) => s + g.effectiveMachines, 0)
+        : 0;
+    stage.groups.forEach((g, groupIndex) => {
+      const groupCrafts =
+        cyclesPerMachine > EPS
+          ? g.effectiveMachines * cyclesPerMachine
+          : g.outputPerMinute;
       usages.push({
-        recipeId: recipe.id,
-        recipeName: recipe.name,
-        building: buildingName[recipe.building] ?? recipe.building,
-        machines: config.machines,
-        clock: config.clock,
-        effectiveMachines: config.effectiveMachines,
+        recipeId: stage.recipeId,
+        recipeName: stage.recipeName,
+        building: stage.building,
+        machines: g.machines,
+        clock: g.clock,
+        effectiveMachines: g.effectiveMachines,
         cyclesPerMinute: groupCrafts,
-        outputPerMinute: primary.amount * groupCrafts,
-        primaryOutput: primary.item,
+        outputPerMinute: g.outputPerMinute,
+        primaryOutput: stage.primaryOutput,
         groupIndex,
       });
     });
@@ -269,10 +280,14 @@ function overallUtil(raws: RawUtilization[]): number {
 }
 
 /**
- * Min-targets-then-balance with machine/clock quantization, splitter-friendly
- * leftover shares, and complexity-first auto excess toward 100% utilization.
+ * Min-targets-then-balance with machine/clock quantization, belt-capped
+ * friendly banks, splitter-friendly production shares, and complexity-first
+ * auto excess toward 100% utilization.
  */
 export function solve(input: PlannerInput): SolveResult {
+  const maxBeltCapacity = clampMaxBeltCapacity(
+    input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
+  );
   const targets = input.targets.filter(
     (t) => t.minRate > EPS || t.weight > EPS,
   );
@@ -289,10 +304,13 @@ export function solve(input: PlannerInput): SolveResult {
     available.set(id, Math.max(0, input.rawAvailable[id] ?? 0));
   }
 
+  const quantize = (item: ItemId, rate: number) =>
+    quantizeItemRateBeltAware(item, rate, { maxBeltCapacity });
+
   // Phase A — quantized minima + user excess floors
   const plannedMins = new Map<ItemId, number>();
   for (const t of targets) {
-    const q = quantizeItemRate(t.item, Math.max(0, t.minRate));
+    const q = quantize(t.item, Math.max(0, t.minRate));
     if (q > EPS) plannedMins.set(t.item, q);
   }
 
@@ -301,15 +319,16 @@ export function solve(input: PlannerInput): SolveResult {
     phaseAMerged.set(item, (phaseAMerged.get(item) ?? 0) + rate);
   }
   for (const [item, rate] of userExcess) {
-    const q = quantizeItemRate(item, rate);
+    const q = quantize(item, rate);
     phaseAMerged.set(item, (phaseAMerged.get(item) ?? 0) + q);
   }
   for (const [item, rate] of phaseAMerged) {
-    phaseAMerged.set(item, quantizeItemRate(item, rate));
+    phaseAMerged.set(item, quantize(item, rate));
   }
 
   const phaseA = expandSinks(
     [...phaseAMerged.entries()].map(([item, rate]) => ({ item, rate })),
+    maxBeltCapacity,
   );
 
   const phaseARaws: RawUtilization[] = scarceRawIds.map((item) => {
@@ -330,7 +349,7 @@ export function solve(input: PlannerInput): SolveResult {
   const targetExtra = new Map<ItemId, number>();
   const excessRates = new Map<ItemId, number>();
   for (const [item, rate] of userExcess) {
-    excessRates.set(item, quantizeItemRate(item, rate));
+    excessRates.set(item, quantize(item, rate));
   }
 
   const buildSinks = (): { item: ItemId; rate: number }[] => {
@@ -360,7 +379,11 @@ export function solve(input: PlannerInput): SolveResult {
         let progressed = false;
         for (const t of weighted) {
           const current = targetExtra.get(t.item) ?? 0;
-          const leftover = leftoverFromPlan(buildSinks(), available);
+          const leftover = leftoverFromPlan(
+            buildSinks(),
+            available,
+            maxBeltCapacity,
+          );
           const coeffs = exactRawCoefficients(t.item);
           const canUseLeftover = (Object.keys(coeffs) as ItemId[]).some(
             (r) => (leftover.get(r) ?? 0) > EPS && (coeffs[r] ?? 0) > EPS,
@@ -376,6 +399,7 @@ export function solve(input: PlannerInput): SolveResult {
             () => targetExtra.set(t.item, current),
             available,
             buildSinks,
+            maxBeltCapacity,
           );
           if (best !== null && best > current + EPS) {
             targetExtra.set(t.item, best);
@@ -385,6 +409,44 @@ export function solve(input: PlannerInput): SolveResult {
         if (!progressed) break;
       }
     }
+  }
+
+  const targetRateMap = new Map<ItemId, number>();
+  for (const t of targets) {
+    const plannedMin = plannedMins.get(t.item) ?? 0;
+    const extra = targetExtra.get(t.item) ?? 0;
+    const total = plannedMin + extra;
+    if (total > EPS) targetRateMap.set(t.item, total);
+  }
+
+  const applyShareabilityExcess = (maxIter: number): void => {
+    let plan = expandSinks(buildSinks(), maxBeltCapacity);
+    for (let iter = 0; iter < maxIter; iter++) {
+      const reconciled = reconcileProductionShares(
+        plan.recipeCrafts,
+        targetRateMap,
+        excessRates,
+        maxBeltCapacity,
+      );
+      let bumped = false;
+      for (const [item, rate] of reconciled) {
+        const prev = excessRates.get(item) ?? 0;
+        if (rate <= prev + EPS) continue;
+        excessRates.set(item, rate);
+        if (planFitsAvailable(buildSinks(), available, maxBeltCapacity)) {
+          bumped = true;
+        } else {
+          excessRates.set(item, prev);
+        }
+      }
+      if (!bumped) break;
+      plan = expandSinks(buildSinks(), maxBeltCapacity);
+    }
+  };
+
+  // Phase C0 — sync excess with destination-pack surplus before soak.
+  if (feasible) {
+    applyShareabilityExcess(4);
   }
 
   // Phase C — complexity-first auto excess to soak leftover raws.
@@ -411,7 +473,11 @@ export function solve(input: PlannerInput): SolveResult {
     let guard = 0;
     while (guard++ < 400) {
       let progressed = false;
-      const leftover = leftoverFromPlan(buildSinks(), available);
+      const leftover = leftoverFromPlan(
+        buildSinks(),
+        available,
+        maxBeltCapacity,
+      );
       const hasLeftover = [...leftover.values()].some((v) => v > EPS);
       if (!hasLeftover) break;
 
@@ -432,6 +498,7 @@ export function solve(input: PlannerInput): SolveResult {
           () => excessRates.set(item, current),
           available,
           buildSinks,
+          maxBeltCapacity,
         );
         if (best !== null && best > current + EPS) {
           excessRates.set(item, best);
@@ -443,23 +510,12 @@ export function solve(input: PlannerInput): SolveResult {
     }
   }
 
-  // Final sinks
-  const finalSinkMap = new Map<ItemId, number>();
-  for (const [item, rate] of plannedMins) {
-    finalSinkMap.set(item, (finalSinkMap.get(item) ?? 0) + rate);
+  // Phase D — re-sync surplus excess after soak reshapes crafts/destinations.
+  if (feasible) {
+    applyShareabilityExcess(4);
   }
-  for (const [item, rate] of targetExtra) {
-    finalSinkMap.set(item, (finalSinkMap.get(item) ?? 0) + rate);
-  }
-  for (const [item, rate] of excessRates) {
-    finalSinkMap.set(item, (finalSinkMap.get(item) ?? 0) + rate);
-  }
-  // Rates are already machine-quantized per sink; do not re-ceil the sum
-  // (that was overshooting scarce raw budgets).
 
-  const final = expandSinks(
-    [...finalSinkMap.entries()].map(([item, rate]) => ({ item, rate })),
-  );
+  let final = expandSinks(buildSinks(), maxBeltCapacity);
 
   const finalRaws: RawUtilization[] = scarceRawIds.map((item) => {
     const avail = available.get(item) ?? 0;
@@ -496,7 +552,7 @@ export function solve(input: PlannerInput): SolveResult {
   const excessResults: ExcessResult[] = [...excessItemSet]
     .map((item) => {
       const requested = userExcess.get(item) ?? 0;
-      const requestedQ = requested > EPS ? quantizeItemRate(item, requested) : 0;
+      const requestedQ = requested > EPS ? quantize(item, requested) : 0;
       const rate = excessRates.get(item) ?? 0;
       return {
         item,
@@ -517,27 +573,27 @@ export function solve(input: PlannerInput): SolveResult {
   for (const t of targetResults) addRate(endRates, t.item, t.totalRate);
   for (const e of excessResults) addRate(endRates, e.item, e.rate);
 
-  const targetRateMap = new Map<ItemId, number>();
-  for (const t of targetResults) {
-    if (t.totalRate > EPS) targetRateMap.set(t.item, t.totalRate);
-  }
   const excessRateMap = new Map<ItemId, number>();
   for (const e of excessResults) {
     if (e.rate > EPS) excessRateMap.set(e.item, e.rate);
   }
+
+  const network = buildFactoryNetwork(
+    final.recipeCrafts,
+    targetRateMap,
+    excessRateMap,
+    maxBeltCapacity,
+  );
 
   return {
     feasible,
     targets: targetResults,
     excess: excessResults,
     raws: finalRaws,
-    recipes: buildRecipeUsages(final.recipeCrafts),
+    recipes: buildRecipeUsagesFromNetwork(network),
     items: buildItemFlows(final.recipeCrafts, endRates),
-    network: buildFactoryNetwork(
-      final.recipeCrafts,
-      targetRateMap,
-      excessRateMap,
-    ),
+    network,
     overallUtilization: overallUtil(finalRaws),
+    maxBeltCapacity,
   };
 }
