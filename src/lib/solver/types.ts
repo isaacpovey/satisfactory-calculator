@@ -102,6 +102,19 @@ export interface SplitPlan {
    * storage (programmable/smart). Ratio need not be nested-splitter-friendly.
    */
   restAfterOverflow?: boolean;
+  /**
+   * The lane uses destination-controlled withdrawals from a shared manifold.
+   * Backpressure keeps the parent lane balanced without changing solved rates.
+   */
+  demandBalanced?: boolean;
+  backpressure?: boolean;
+}
+
+export interface LaneWithdrawal {
+  to: { kind: FlowKind; id: string };
+  rate: number;
+  /** Exact selected-bank destination for recipe withdrawals. */
+  toBankIndex?: number;
 }
 
 export interface MergePlan {
@@ -124,6 +137,13 @@ export interface MergePlan {
   to?: { kind: FlowKind; id: string };
   /** Items/min this destination takes from the lane (≤ rate); rest → overflow */
   consumerRate?: number;
+  /**
+   * Authoritative withdrawals from this lane. Exact plans may route one bank
+   * lane to several destinations with a demand-balanced manifold.
+   */
+  withdrawals?: LaneWithdrawal[];
+  routing?: "dedicated" | "demand-balanced-manifold";
+  backpressure?: boolean;
 }
 
 export interface MachineGroupPlan {
@@ -194,6 +214,8 @@ export interface FlowEdge {
    * draws from (0-based). Null/undefined = whole stage / single lane / raw.
    */
   fromLaneIndex?: number | null;
+  /** Exact selected-bank destination for recipe input edges. */
+  toBankIndex?: number | null;
 }
 
 export interface ProductionChainGroup {
@@ -208,8 +230,22 @@ export interface FactoryNetwork {
   edges: FlowEdge[];
 }
 
+export type SolveProofStatus = "OPTIMAL" | "INFEASIBLE" | "CANCELLED" | "LEGACY";
+
+export interface SolveObjective {
+  scarceRawItemsPerMinute: number;
+  weightedTargetOutput: number;
+  physicalMachines: number;
+  groups: number;
+  internalSplitterMergerDevices: number;
+  routingSplitterDevices: number;
+  totalSplitterMergerDevices: number;
+}
+
 export interface SolveResult {
   feasible: boolean;
+  proofStatus: SolveProofStatus;
+  objective: SolveObjective | null;
   targets: TargetResult[];
   /** All chain intermediaries with planned excess (auto + user) */
   excess: ExcessResult[];

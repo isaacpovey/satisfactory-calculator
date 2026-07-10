@@ -6,7 +6,7 @@ import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
 import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
 import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
-import { solve } from "@/lib/solver";
+import { solveExact } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -56,9 +56,11 @@ export function PlannerApp() {
   const [result, setResult] = useState<SolveResult | null>(null);
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+  const [solveError, setSolveError] = useState<string | null>(null);
   const [changes, setChanges] = useState(emptyChanges);
   const prevResultRef = useRef<SolveResult | null>(null);
   const computeGen = useRef(0);
+  const activeSolve = useRef<AbortController | null>(null);
 
   const draftInput: PlannerInput = useMemo(
     () => ({
@@ -97,24 +99,51 @@ export function PlannerApp() {
   }, [hydrated, rawAvailable, targets, excessFloors, maxBeltCapacity]);
 
   const runCompute = useCallback((input: PlannerInput) => {
+    activeSolve.current?.abort();
+    const controller = new AbortController();
+    activeSolve.current = controller;
     const gen = ++computeGen.current;
     setComputing(true);
+    setSolveError(null);
     setChanges(emptyChanges());
 
-    // Yield so the loading overlay can paint before the sync solve blocks.
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+    void solveExact(input, { signal: controller.signal })
+      .then((next) => {
         if (gen !== computeGen.current) return;
-        const next = solve(input);
-        if (gen !== computeGen.current) return;
+        if (next.proofStatus === "CANCELLED") {
+          setSolveError("Solve cancelled before optimality was proven.");
+          return;
+        }
         setChanges(diffSolveResults(prevResultRef.current, next));
         prevResultRef.current = next;
         setResult(next);
         setComputedFingerprint(inputFingerprint(input));
+      })
+      .catch((error: unknown) => {
+        if (gen !== computeGen.current || controller.signal.aborted) return;
+        setSolveError(error instanceof Error ? error.message : "The exact solver failed.");
+      })
+      .finally(() => {
+        if (gen !== computeGen.current) return;
         setComputing(false);
-      }, 0);
-    });
+        if (activeSolve.current === controller) activeSolve.current = null;
+      });
   }, []);
+
+  const cancelCompute = useCallback(() => {
+    activeSolve.current?.abort();
+    activeSolve.current = null;
+    computeGen.current++;
+    setComputing(false);
+    setSolveError("Solve cancelled before optimality was proven.");
+  }, []);
+
+  useEffect(
+    () => () => {
+      activeSolve.current?.abort();
+    },
+    [],
+  );
 
   const initialComputeDone = useRef(false);
 
@@ -184,10 +213,12 @@ export function PlannerApp() {
               <p className="text-xs font-medium text-primary">
                 Inputs changed — results are out of date
               </p>
+            ) : solveError ? (
+              <p className="text-xs font-medium text-destructive">{solveError}</p>
             ) : (
               <p className="text-xs text-muted-foreground">
                 {computing
-                  ? "Computing plan…"
+                  ? "Proving the global optimum…"
                   : result
                     ? "Results match current inputs"
                     : "Ready to compute"}
@@ -197,13 +228,14 @@ export function PlannerApp() {
               type="button"
               size="lg"
               className="w-full font-heading"
-              disabled={computing || (!dirty && result !== null)}
-              onClick={() => runCompute(draftInput)}
+              disabled={!computing && !dirty && result !== null}
+              variant={computing ? "outline" : "default"}
+              onClick={computing ? cancelCompute : () => runCompute(draftInput)}
             >
               {computing ? (
                 <>
                   <Loader2 className="animate-spin" data-icon="inline-start" />
-                  Computing…
+                  Cancel solve
                 </>
               ) : dirty ? (
                 "Compute plan"
@@ -227,8 +259,8 @@ export function PlannerApp() {
       </div>
 
       <footer className="border-t border-foreground/8 pt-4 text-xs text-muted-foreground">
-        Clocks 100 / 75 / 66.67 / 50 / 33.33 / 25% · belt-capped machine banks · nested 1/2 + 1/3
-        splits & merges · overflow to storage · saved in this browser
+        Exact recipe-specific clocks · globally optimal machine banks · conserved item flows ·
+        demand-balanced manifolds · saved in this browser
       </footer>
     </div>
   );

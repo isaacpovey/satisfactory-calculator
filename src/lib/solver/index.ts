@@ -1,5 +1,17 @@
-export type { PlannerInput, SolveResult, ExcessResult, FactoryNetwork } from "./types";
-export { solve } from "./allocate";
+export type {
+  PlannerInput,
+  SolveResult,
+  ExcessResult,
+  FactoryNetwork,
+  SolveObjective,
+  SolveProofStatus,
+} from "./types";
+export {
+  solveExact as solve,
+  solveExact,
+  solveExactPlanner,
+  type ExactPlannerSolveOptions,
+} from "./exact-planner";
 export { rawCoefficients } from "./bom";
 export { formatMachines, formatPercent, formatRate } from "./format";
 export {

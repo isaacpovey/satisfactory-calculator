@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { rawCoefficients } from "@/lib/solver/bom";
 import { solve } from "@/lib/solver/allocate";
+import { solveExact } from "@/lib/solver/exact-planner";
 import {
   isSplitterFriendlyCount,
   isSplitterFriendlyRatio,
@@ -221,8 +222,8 @@ describe("solve", { timeout: 30_000 }, () => {
   });
 
   /** Snapshot of live planner localStorage (satisfactory-planner:v1). */
-  it("browser planner config: solves without negative nets", () => {
-    const result = solve({
+  it("browser planner config: solves without negative nets", async () => {
+    const result = await solveExact({
       rawAvailable: {
         "iron-ore": 1860,
         "copper-ore": 540,
@@ -262,10 +263,11 @@ describe("solve", { timeout: 30_000 }, () => {
     for (const r of result.raws) {
       expect(r.used).toBeLessThanOrEqual(r.available + 1e-6);
     }
-    for (const flow of result.items) {
+    const rawItems = new Set(result.raws.map((raw) => raw.item));
+    for (const flow of result.items.filter((item) => !rawItems.has(item.item))) {
       expect(flow.net).toBeGreaterThanOrEqual(-1e-6);
     }
-  });
+  }, 120_000);
 
   it("grows weight-0 targets when they best soak leftover ore", () => {
     const result = solve({

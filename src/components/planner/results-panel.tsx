@@ -199,8 +199,7 @@ function StageCard({
                 Output belts
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Per-destination belts from dedicated machine banks; mergers only combine banks
-                feeding the same destination
+                One belt per selected bank; shared lanes use demand-balanced backpressure
               </p>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
@@ -240,9 +239,9 @@ export function ResultsPanel({
         {computing ? (
           <>
             <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="font-heading font-semibold">Computing plan…</p>
+            <p className="font-heading font-semibold">Proving the global optimum…</p>
             <p className="text-sm text-muted-foreground">
-              Building machine banks and splitter shares
+              Checking every non-dominated clock and machine-bank pattern
             </p>
           </>
         ) : (
@@ -276,7 +275,7 @@ export function ResultsPanel({
             <div>
               <p className="font-heading text-sm font-semibold">Computing…</p>
               <p className="text-xs text-muted-foreground">
-                Previous results stay visible until done
+                Previous results stay visible while optimality is proven
               </p>
             </div>
           </div>
@@ -296,6 +295,16 @@ export function ResultsPanel({
           dimmed && "pointer-events-none opacity-45",
         )}
       >
+        {result.proofStatus === "OPTIMAL" ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-util-high/10 px-4 py-3 text-sm ring-1 ring-util-high/25">
+            <p className="font-heading font-semibold text-util-high">Globally optimal plan</p>
+            <p className="text-xs text-muted-foreground">
+              Exact conservation · {result.objective?.physicalMachines ?? 0} machines ·{" "}
+              {result.objective?.groups ?? 0} groups
+            </p>
+          </div>
+        ) : null}
+
         {!result.feasible && (
           <div
             role="alert"

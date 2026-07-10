@@ -621,6 +621,8 @@ export function solve(input: PlannerInput): SolveResult {
 
   return {
     feasible,
+    proofStatus: "LEGACY",
+    objective: null,
     targets: targetResults,
     excess: excessResults,
     raws: finalRaws,
