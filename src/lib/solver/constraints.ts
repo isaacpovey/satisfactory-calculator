@@ -588,9 +588,7 @@ export function complexityScore(itemId: ItemId): number {
   return depth * 10 + inputs;
 }
 
-export function formatClock(clock: AllowedClock): string {
-  // Exact thirds display as repeating decimals players type in-game
-  if (Math.abs(clock - 2 / 3) < 1e-9) return "66.67%";
-  if (Math.abs(clock - 1 / 3) < 1e-9) return "33.33%";
-  return `${Math.round(clock * 100)}%`;
+export function formatClock(clock: number): string {
+  const percent = Math.round(clock * 10_000) / 100;
+  return `${percent.toFixed(2).replace(/\.?0+$/u, "")}%`;
 }

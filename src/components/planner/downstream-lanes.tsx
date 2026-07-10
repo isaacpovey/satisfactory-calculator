@@ -14,6 +14,7 @@ interface DownstreamLanesProps {
 }
 
 function destinationLabel(lane: MergePlan): string {
+  if (lane.routing === "demand-balanced-manifold") return "Shared output manifold";
   if (!lane.to) return "Output belt";
   if (lane.to.kind === "excess") return "Overflow belt";
   if (lane.to.kind === "target") return `Belt to target`;
@@ -39,8 +40,8 @@ export function DownstreamLanes({ itemId, lanes, edges }: DownstreamLanesProps) 
           Downstream by destination
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Each belt feeds one destination. Machine overshoot on that belt goes to storage as
-          overflow.
+          Dedicated belts stay direct; shared belts use downstream backpressure to hold each solved
+          rate.
         </p>
       </div>
 

@@ -13,6 +13,7 @@ interface SplitterPlanDisplayProps {
 function ratioLabel(plan: SplitPlan): string {
   if (plan.mergeOnly) return "Takes whole lane";
   if (plan.overflowToStorage) return "Overflow to storage";
+  if (plan.demandBalanced) return "Demand-balanced manifold";
   if (!plan.ratio) return "Unbuildable split";
   const { num, den } = plan.ratio;
   if (den === 1 || num === den) return "Takes whole lane";
@@ -66,6 +67,19 @@ export function SplitterPlanDisplay({
         </Badge>
         <span className="text-[11px] text-muted-foreground">
           Remainder of lane after overflow to storage
+        </span>
+      </div>
+    );
+  }
+
+  if (plan.demandBalanced) {
+    return (
+      <div className={cn("flex flex-col gap-1", className)}>
+        <Badge variant={fillBadge} className="w-fit font-normal">
+          Demand-balanced manifold
+        </Badge>
+        <span className="text-[11px] text-muted-foreground">
+          Downstream backpressure holds the exact solved rate
         </span>
       </div>
     );

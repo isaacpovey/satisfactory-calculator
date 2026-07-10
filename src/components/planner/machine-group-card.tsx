@@ -2,7 +2,7 @@ import { beltTierForRate } from "@/data/belts";
 import type { ItemId } from "@/data/types";
 import { InputSplitVisual } from "@/components/planner/belt-flow-visual";
 import { ItemFlowLink } from "@/components/planner/flow-endpoint-link";
-import { formatClock, type AllowedClock } from "@/lib/solver/constraints";
+import { formatClock } from "@/lib/solver/constraints";
 import { groupInputRates, splitterInputStageRates } from "@/lib/solver/group-inputs";
 import { formatMachines, formatRate } from "@/lib/solver/format";
 import type { MachineGroupPlan, StageInputBelt } from "@/lib/solver/types";
@@ -42,7 +42,7 @@ export function MachineGroupCard({
           <p className="font-heading text-base font-semibold tabular-nums">
             {formatMachines(group.machines)}
             <span className="mx-1.5 text-muted-foreground">@</span>
-            {formatClock(group.clock as AllowedClock)}
+            {formatClock(group.clock)}
           </p>
         </div>
         <div className="flex flex-col items-end gap-0.5">
