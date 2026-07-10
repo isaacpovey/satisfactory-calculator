@@ -12,6 +12,7 @@ export {
   solveExactPlanner,
   type ExactPlannerSolveOptions,
 } from "./exact-planner";
+export type { ExactSolveProgress } from "./exact";
 export { rawCoefficients } from "./bom";
 export { formatMachines, formatPercent, formatRate } from "./format";
 export {

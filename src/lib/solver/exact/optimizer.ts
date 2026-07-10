@@ -876,7 +876,6 @@ async function solveLexicographically(
     const solver = new CpSolver();
     const status = await solver.solve(state.model, {
       numWorkers: searchWorkers,
-      interleaveSearch: input.interleaveSearch ?? false,
       randomSeed: 1,
       repairHint: true,
     });

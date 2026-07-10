@@ -33,7 +33,6 @@ const buildingName = new Map(buildings.map((building) => [building.id, building.
 export interface ExactPlannerSolveOptions {
   signal?: AbortSignal;
   searchWorkers?: number;
-  interleaveSearch?: boolean;
   onProgress?: (progress: ExactSolveProgress) => void;
 }
 
@@ -494,7 +493,6 @@ export async function solveExact(
     beltCapacity: maxBeltCapacity,
     signal: options.signal,
     searchWorkers: options.searchWorkers,
-    interleaveSearch: options.interleaveSearch,
     onProgress: options.onProgress,
   });
   if (!exact.feasible) return emptyPlannerResult(exact, maxBeltCapacity);

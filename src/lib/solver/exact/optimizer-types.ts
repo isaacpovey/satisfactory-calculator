@@ -36,8 +36,6 @@ export interface ExactOptimizerInput {
   readonly signal?: AbortSignal;
   /** Overrides the hardware-aware CP-SAT worker count. */
   readonly searchWorkers?: number;
-  /** Uses CP-SAT's deterministic interleaved parallel search. */
-  readonly interleaveSearch?: boolean;
   readonly onProgress?: (progress: ExactSolveProgress) => void;
 }
 

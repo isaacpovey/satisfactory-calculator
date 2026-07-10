@@ -5,7 +5,7 @@ Client-side Next.js planner for Satisfactory (Tier 0–4 standard recipes plus e
 ## Stack
 
 - Next.js (App Router, static export)
-- OR-Tools CP-SAT running in a browser Web Worker
+- OR-Tools CP-SAT running parallel search in a browser Web Worker
 - shadcn/ui + Tailwind CSS
 
 ## Develop
@@ -37,3 +37,6 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 `vercel.json` configures them for Vercel. Other static hosts must apply equivalent headers.
+
+The exact solver uses up to eight logical cores, reserving one core for browser responsiveness.
+Long solves show the active lexicographic objective phase and elapsed time after 15 seconds.
