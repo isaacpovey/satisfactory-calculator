@@ -396,29 +396,29 @@ export function PlannerApp() {
         ) : null}
       </header>
 
-      <div className="flex flex-col gap-5">
-        <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
-          <div className="flex flex-col gap-5">
-            <RawInputsPanel
-              values={rawAvailable}
-              onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
-            />
-            <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
-          </div>
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <RawInputsPanel
+          values={rawAvailable}
+          onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
+        />
+        <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
+        <div className="lg:col-span-2">
           <TargetsPanel targets={targets} onChange={handleTargetsChange} />
         </div>
-        <ExcessPanel
-          excess={excessRows}
-          floors={excessFloors}
-          loading={sparePartsRecomputing}
-          onApplyGlobalMinimum={applyGlobalMinimum}
-          onFloorChange={(item, rate) =>
-            setExcessFloors((prev) => ({
-              ...prev,
-              [item as ItemId]: rate,
-            }))
-          }
-        />
+        <div className="lg:col-span-2">
+          <ExcessPanel
+            excess={excessRows}
+            floors={excessFloors}
+            loading={sparePartsRecomputing}
+            onApplyGlobalMinimum={applyGlobalMinimum}
+            onFloorChange={(item, rate) =>
+              setExcessFloors((prev) => ({
+                ...prev,
+                [item as ItemId]: rate,
+              }))
+            }
+          />
+        </div>
 
         <div
           className={cn(
