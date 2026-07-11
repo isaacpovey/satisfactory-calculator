@@ -1,0 +1,885 @@
+{
+  "items": [
+    {
+      "id": "iron-ore",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "copper-ore",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "limestone",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "coal",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "water",
+      "isRaw": true,
+      "isUnlimited": true,
+      "isIngot": false
+    },
+    {
+      "id": "caterium-ore",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "raw-quartz",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "sulfur",
+      "isRaw": true,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "iron-ingot",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": true
+    },
+    {
+      "id": "copper-ingot",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": true
+    },
+    {
+      "id": "iron-plate",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "iron-rod",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "screw",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "wire",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "cable",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "concrete",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "copper-sheet",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "reinforced-iron-plate",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "rotor",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "modular-frame",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "smart-plating",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "steel-ingot",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": true
+    },
+    {
+      "id": "steel-beam",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "steel-pipe",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "versatile-framework",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "encased-industrial-beam",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "stator",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "motor",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "automated-wiring",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "caterium-ingot",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": true
+    },
+    {
+      "id": "quickwire",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "ai-limiter",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "quartz-crystal",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "silica",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "crystal-oscillator",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "compacted-coal",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "black-powder",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    },
+    {
+      "id": "nobelisk",
+      "isRaw": false,
+      "isUnlimited": false,
+      "isIngot": false
+    }
+  ],
+  "recipes": [
+    {
+      "id": "iron-ingot",
+      "durationSec": 2,
+      "inputs": [
+        {
+          "item": "iron-ore",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "iron-ingot",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "copper-ingot",
+      "durationSec": 2,
+      "inputs": [
+        {
+          "item": "copper-ore",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "copper-ingot",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "iron-plate",
+      "durationSec": 6,
+      "inputs": [
+        {
+          "item": "iron-ingot",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "iron-plate",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "iron-rod",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "iron-ingot",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "iron-rod",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "screw",
+      "durationSec": 6,
+      "inputs": [
+        {
+          "item": "iron-rod",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "screw",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "id": "wire",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "copper-ingot",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "wire",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "cable",
+      "durationSec": 2,
+      "inputs": [
+        {
+          "item": "wire",
+          "amount": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "cable",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "concrete",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "limestone",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "concrete",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "copper-sheet",
+      "durationSec": 6,
+      "inputs": [
+        {
+          "item": "copper-ingot",
+          "amount": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "copper-sheet",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "reinforced-iron-plate",
+      "durationSec": 12,
+      "inputs": [
+        {
+          "item": "iron-plate",
+          "amount": 6
+        },
+        {
+          "item": "screw",
+          "amount": 12
+        }
+      ],
+      "outputs": [
+        {
+          "item": "reinforced-iron-plate",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "rotor",
+      "durationSec": 15,
+      "inputs": [
+        {
+          "item": "iron-rod",
+          "amount": 5
+        },
+        {
+          "item": "screw",
+          "amount": 25
+        }
+      ],
+      "outputs": [
+        {
+          "item": "rotor",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "modular-frame",
+      "durationSec": 60,
+      "inputs": [
+        {
+          "item": "reinforced-iron-plate",
+          "amount": 3
+        },
+        {
+          "item": "iron-rod",
+          "amount": 12
+        }
+      ],
+      "outputs": [
+        {
+          "item": "modular-frame",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "smart-plating",
+      "durationSec": 30,
+      "inputs": [
+        {
+          "item": "reinforced-iron-plate",
+          "amount": 1
+        },
+        {
+          "item": "rotor",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "smart-plating",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "steel-ingot",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "iron-ore",
+          "amount": 3
+        },
+        {
+          "item": "coal",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "steel-ingot",
+          "amount": 3
+        }
+      ]
+    },
+    {
+      "id": "steel-beam",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "steel-ingot",
+          "amount": 4
+        }
+      ],
+      "outputs": [
+        {
+          "item": "steel-beam",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "steel-pipe",
+      "durationSec": 6,
+      "inputs": [
+        {
+          "item": "steel-ingot",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "steel-pipe",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "versatile-framework",
+      "durationSec": 24,
+      "inputs": [
+        {
+          "item": "modular-frame",
+          "amount": 1
+        },
+        {
+          "item": "steel-beam",
+          "amount": 12
+        }
+      ],
+      "outputs": [
+        {
+          "item": "versatile-framework",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "encased-industrial-beam",
+      "durationSec": 10,
+      "inputs": [
+        {
+          "item": "steel-beam",
+          "amount": 3
+        },
+        {
+          "item": "concrete",
+          "amount": 6
+        }
+      ],
+      "outputs": [
+        {
+          "item": "encased-industrial-beam",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "stator",
+      "durationSec": 12,
+      "inputs": [
+        {
+          "item": "steel-pipe",
+          "amount": 3
+        },
+        {
+          "item": "wire",
+          "amount": 8
+        }
+      ],
+      "outputs": [
+        {
+          "item": "stator",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "motor",
+      "durationSec": 12,
+      "inputs": [
+        {
+          "item": "rotor",
+          "amount": 2
+        },
+        {
+          "item": "stator",
+          "amount": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "motor",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "automated-wiring",
+      "durationSec": 24,
+      "inputs": [
+        {
+          "item": "stator",
+          "amount": 1
+        },
+        {
+          "item": "cable",
+          "amount": 20
+        }
+      ],
+      "outputs": [
+        {
+          "item": "automated-wiring",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "caterium-ingot",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "caterium-ore",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "caterium-ingot",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "quickwire",
+      "durationSec": 5,
+      "inputs": [
+        {
+          "item": "caterium-ingot",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "quickwire",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "ai-limiter",
+      "durationSec": 12,
+      "inputs": [
+        {
+          "item": "copper-sheet",
+          "amount": 5
+        },
+        {
+          "item": "quickwire",
+          "amount": 20
+        }
+      ],
+      "outputs": [
+        {
+          "item": "ai-limiter",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "quartz-crystal",
+      "durationSec": 8,
+      "inputs": [
+        {
+          "item": "raw-quartz",
+          "amount": 5
+        }
+      ],
+      "outputs": [
+        {
+          "item": "quartz-crystal",
+          "amount": 3
+        }
+      ]
+    },
+    {
+      "id": "silica",
+      "durationSec": 8,
+      "inputs": [
+        {
+          "item": "raw-quartz",
+          "amount": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "silica",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "crystal-oscillator",
+      "durationSec": 120,
+      "inputs": [
+        {
+          "item": "quartz-crystal",
+          "amount": 36
+        },
+        {
+          "item": "cable",
+          "amount": 28
+        },
+        {
+          "item": "reinforced-iron-plate",
+          "amount": 5
+        }
+      ],
+      "outputs": [
+        {
+          "item": "crystal-oscillator",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "compacted-coal",
+      "durationSec": 12,
+      "inputs": [
+        {
+          "item": "coal",
+          "amount": 5
+        },
+        {
+          "item": "sulfur",
+          "amount": 5
+        }
+      ],
+      "outputs": [
+        {
+          "item": "compacted-coal",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "black-powder",
+      "durationSec": 4,
+      "inputs": [
+        {
+          "item": "coal",
+          "amount": 1
+        },
+        {
+          "item": "sulfur",
+          "amount": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "black-powder",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "nobelisk",
+      "durationSec": 6,
+      "inputs": [
+        {
+          "item": "black-powder",
+          "amount": 2
+        },
+        {
+          "item": "steel-pipe",
+          "amount": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "nobelisk",
+          "amount": 1
+        }
+      ]
+    }
+  ],
+  "scarceRawIds": [
+    "iron-ore",
+    "copper-ore",
+    "limestone",
+    "coal",
+    "caterium-ore",
+    "raw-quartz",
+    "sulfur"
+  ],
+  "rawAvailability": {
+    "iron-ore": 1860,
+    "copper-ore": 540,
+    "limestone": 420,
+    "coal": 360,
+    "caterium-ore": 120,
+    "raw-quartz": 0,
+    "sulfur": 0
+  },
+  "targets": [
+    {
+      "item": "motor",
+      "minimum": 2,
+      "weight": 20
+    },
+    {
+      "item": "encased-industrial-beam",
+      "minimum": 2,
+      "weight": 60
+    },
+    {
+      "item": "versatile-framework",
+      "minimum": 2,
+      "weight": 50
+    },
+    {
+      "item": "automated-wiring",
+      "minimum": 2,
+      "weight": 50
+    }
+  ],
+  "excess": [
+    {
+      "item": "steel-beam",
+      "floor": 5
+    },
+    {
+      "item": "steel-pipe",
+      "floor": 5
+    },
+    {
+      "item": "iron-rod",
+      "floor": 5
+    },
+    {
+      "item": "iron-plate",
+      "floor": 5
+    },
+    {
+      "item": "screw",
+      "floor": 5
+    },
+    {
+      "item": "cable",
+      "floor": 5
+    },
+    {
+      "item": "stator",
+      "floor": 5
+    },
+    {
+      "item": "ai-limiter",
+      "floor": 5
+    },
+    {
+      "item": "rotor",
+      "floor": 5
+    },
+    {
+      "item": "reinforced-iron-plate",
+      "floor": 5
+    },
+    {
+      "item": "smart-plating",
+      "floor": 20
+    },
+    {
+      "item": "wire",
+      "floor": 5
+    },
+    {
+      "item": "quickwire",
+      "floor": 5
+    },
+    {
+      "item": "modular-frame",
+      "floor": 5
+    },
+    {
+      "item": "copper-sheet",
+      "floor": 5
+    },
+    {
+      "item": "concrete",
+      "floor": 5
+    }
+  ],
+  "beltCapacity": 270
+}

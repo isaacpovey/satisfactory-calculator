@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { solveExact, type ExactSolveProgress } from "@/lib/solver";
-import { BROWSER_FACTORY_BENCHMARK_INPUT } from "@/lib/solver/benchmark-config";
+import type { ExactSolverEngine } from "@/lib/solver/exact-planner";
+import {
+  BROWSER_FACTORY_BENCHMARK_INPUT,
+  QUICKWIRE_BENCHMARK_INPUT,
+} from "@/lib/solver/benchmark-config";
 import {
   branchesPerSecond,
   formatBranchesPerSec,
@@ -34,7 +39,12 @@ function toCompletedPhase(progress: ExactSolveProgress): CompletedPhaseTiming | 
   };
 }
 
-export default function BenchmarkPage() {
+function BenchmarkContent() {
+  const searchParams = useSearchParams();
+  const engine: ExactSolverEngine = searchParams.get("engine") === "rust" ? "rust" : "cp-sat";
+  const config = searchParams.get("config") === "quickwire" ? "quickwire" : "factory";
+  const input =
+    config === "quickwire" ? QUICKWIRE_BENCHMARK_INPUT : BROWSER_FACTORY_BENCHMARK_INPUT;
   const runtime = useMemo(() => readSolverRuntimeInfo(), []);
   const [state, setState] = useState<BenchmarkState>({
     status: "running",
@@ -54,7 +64,8 @@ export default function BenchmarkPage() {
       userAgent: navigator.userAgent,
     });
 
-    void solveExact(BROWSER_FACTORY_BENCHMARK_INPUT, {
+    void solveExact(input, {
+      engine,
       searchWorkers: 8,
       onProgress: (progress) => {
         const timing = toCompletedPhase(progress);
@@ -104,7 +115,7 @@ export default function BenchmarkPage() {
     return () => {
       cancelled = true;
     };
-  }, [runtime]);
+  }, [runtime, engine, input]);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
@@ -114,10 +125,19 @@ export default function BenchmarkPage() {
             Back to planner
           </Link>
         </p>
-        <h1 className="font-heading text-2xl font-bold tracking-tight">Solver benchmark</h1>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">
+          Solver benchmark · {engine === "rust" ? "Rust (Pumpkin)" : "CP-SAT (or-tools)"}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Runs the saved browser factory snapshot (1860 iron, 540 copper, full excess floors) with 8
-          CP-SAT workers. Use this page to compare branches/s across browsers.
+          Runs the{" "}
+          {config === "quickwire"
+            ? "Quickwire snapshot (200/min from 120 caterium ore)"
+            : "saved browser factory snapshot (1860 iron, 540 copper, full excess floors)"}
+          {engine === "rust"
+            ? " on the single-threaded Rust/Pumpkin WASM engine."
+            : " with 8 CP-SAT workers."}{" "}
+          Use <code>?engine=rust|cp-sat</code> and <code>?config=quickwire|factory</code> to
+          compare.
         </p>
       </header>
 
@@ -188,8 +208,20 @@ export default function BenchmarkPage() {
       </section>
 
       <pre className="overflow-auto rounded-xl bg-muted/40 p-4 text-xs ring-1 ring-foreground/8">
-        {JSON.stringify({ runtime, ...state, userAgent: navigator.userAgent }, null, 2)}
+        {JSON.stringify(
+          { engine, config, runtime, ...state, userAgent: navigator.userAgent },
+          null,
+          2,
+        )}
       </pre>
     </main>
+  );
+}
+
+export default function BenchmarkPage() {
+  return (
+    <Suspense>
+      <BenchmarkContent />
+    </Suspense>
   );
 }

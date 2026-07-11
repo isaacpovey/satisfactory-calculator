@@ -1,5 +1,16 @@
 import type { PlannerInput } from "./types";
 
+/**
+ * Small planner snapshot (Quickwire 200/min from 120 caterium ore) used to
+ * compare solver engines on a config every backend finishes quickly.
+ */
+export const QUICKWIRE_BENCHMARK_INPUT: PlannerInput = {
+  rawAvailable: { "caterium-ore": 120 },
+  targets: [{ item: "quickwire", minRate: 200, weight: 1 }],
+  excess: [],
+  maxBeltCapacity: 270,
+};
+
 /** Saved browser planner snapshot used for solver performance regression checks. */
 export const BROWSER_FACTORY_BENCHMARK_INPUT: PlannerInput = {
   rawAvailable: {

@@ -30,10 +30,17 @@ const ZERO = Rational.from(0);
 
 const buildingName = new Map(buildings.map((building) => [building.id, building.name] as const));
 
+export type ExactSolverEngine = "cp-sat" | "rust";
+
 export interface ExactPlannerSolveOptions {
   signal?: AbortSignal;
   searchWorkers?: number;
   onProgress?: (progress: ExactSolveProgress) => void;
+  /**
+   * Optimizer backend: "cp-sat" (or-tools-wasm, default) or "rust"
+   * (Pumpkin-based Rust solver compiled to WebAssembly).
+   */
+  engine?: ExactSolverEngine;
 }
 
 interface ExpandedBank {
@@ -481,7 +488,11 @@ export async function solveExact(
 ): Promise<SolveResult> {
   const graph = validateRecipeGraph(items, recipes, scarceRawIds);
   const maxBeltCapacity = clampMaxBeltCapacity(input.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY);
-  const exact = await solveExactProduction({
+  const solveProduction =
+    options.engine === "rust"
+      ? (await import("./rust/optimizer")).solveExactProductionRust
+      : solveExactProduction;
+  const exact = await solveProduction({
     graph,
     rawAvailability: input.rawAvailable,
     targets: input.targets.map((target) => ({
