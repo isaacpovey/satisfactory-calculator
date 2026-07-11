@@ -26,6 +26,9 @@
     "next-env.d.ts",
     "node_modules/**",
     "scripts/**",
+    "src/lib/solver/rust/pkg/**",
+    "public/rust-solver/satisfactory_exact_solver.js",
+    "rust/**",
   ],
   "rules": {
     "typescript/no-explicit-any": "error",

@@ -14,15 +14,20 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 
 use pumpkin_conflict_resolvers::resolvers::ResolutionResolver;
-use pumpkin_solver::core::optimisation::linear_sat_unsat::LinearSatUnsat;
-use pumpkin_solver::core::optimisation::OptimisationDirection;
-use pumpkin_solver::core::predicate;
-use pumpkin_solver::core::proof::ConstraintTag;
-use pumpkin_solver::core::results::{OptimisationResult, ProblemSolution, Solution, SolutionReference};
-use pumpkin_solver::core::termination::{TerminationCondition, TimeBudget};
-use pumpkin_solver::core::variables::{AffineView, DomainId, Literal, TransformableVariable};
-use pumpkin_solver::core::DefaultBrancher;
-use pumpkin_solver::Solver;
+use pumpkin_core::optimisation::linear_sat_unsat::LinearSatUnsat;
+use pumpkin_core::optimisation::OptimisationDirection;
+use pumpkin_core::predicate;
+use pumpkin_core::proof::ConstraintTag;
+use pumpkin_core::results::{OptimisationResult, ProblemSolution, Solution, SolutionReference};
+use pumpkin_core::termination::{TerminationCondition, TimeBudget};
+use pumpkin_core::branching::branchers::autonomous_search::AutonomousSearch;
+use pumpkin_core::branching::branchers::dynamic_brancher::DynamicBrancher;
+use pumpkin_core::branching::branchers::independent_variable_value_brancher::IndependentVariableValueBrancher;
+use pumpkin_core::branching::branchers::warm_start::WarmStart;
+use pumpkin_core::branching::value_selection::InDomainMin;
+use pumpkin_core::branching::variable_selection::InputOrder;
+use pumpkin_core::variables::{AffineView, DomainId, Literal, TransformableVariable};
+use pumpkin_core::Solver;
 
 use crate::bounds::{compute_recipe_bounds, RecipeBound};
 use crate::graph::RecipeGraph;
@@ -325,7 +330,7 @@ fn decompose_sum_terms(
         let mut row = sum_term_views(chunk, label)?;
         row.push(partial.scaled(-1));
         let tag = state.tag;
-        state.post(pumpkin_solver::equals(row, 0, tag));
+        state.post(pumpkin_constraints::equals(row, 0, tag));
         parents.push(SumTerm { var: partial, coefficient: BigInt::one(), lower, upper });
     }
     decompose_sum_terms(state, parents, label)
@@ -368,7 +373,7 @@ fn sum_variable(
     let mut row = sum_term_views(&top, label)?;
     row.push(total.scaled(-1));
     let tag = state.tag;
-    state.post(pumpkin_solver::equals(row, 0, tag));
+    state.post(pumpkin_constraints::equals(row, 0, tag));
     Ok(SumTerm { var: total, coefficient: BigInt::one(), lower, upper })
 }
 
@@ -392,7 +397,7 @@ fn post_equals_decomposed(
         return Ok(());
     }
     let tag = state.tag;
-    state.post(pumpkin_solver::equals(views, rhs, tag));
+    state.post(pumpkin_constraints::equals(views, rhs, tag));
     Ok(())
 }
 
@@ -473,7 +478,7 @@ impl ModelState {
 
     fn post(
         &mut self,
-        constraint: impl pumpkin_solver::core::constraints::NegatableConstraint,
+        constraint: impl pumpkin_core::constraints::NegatableConstraint,
     ) {
         if self.stopped() {
             self.build_infeasible = true;
@@ -486,7 +491,7 @@ impl ModelState {
 
     fn post_implied(
         &mut self,
-        constraint: impl pumpkin_solver::core::constraints::NegatableConstraint,
+        constraint: impl pumpkin_core::constraints::NegatableConstraint,
         literal: Literal,
     ) {
         if self.stopped() {
@@ -721,7 +726,7 @@ fn add_raw_constraints(problem: &OptimizerProblem, state: &mut ModelState) -> Re
         }
         let rhs = checked_i32(&upper_bound, &format!("{item_id} scaled raw availability"))?;
         let tag = state.tag;
-        state.post(pumpkin_solver::less_than_or_equals(views, rhs, tag));
+        state.post(pumpkin_constraints::less_than_or_equals(views, rhs, tag));
     }
     Ok(())
 }
@@ -842,15 +847,15 @@ fn add_positive_activity(
     let (activity_var, activity_literal) = new_activity(state);
     let tag = state.tag;
     if upper_bound.is_zero() {
-        state.post(pumpkin_solver::equals(vec![activity_var.scaled(1)], 0, tag));
+        state.post(pumpkin_constraints::equals(vec![activity_var.scaled(1)], 0, tag));
         return Ok((activity_var, activity_literal));
     }
     let _ = checked_i32(upper_bound, &format!("{label} activity upper bound"))?;
     state.post_implied(
-        pumpkin_solver::greater_than_or_equals(vec![var.scaled(1)], 1, tag),
+        pumpkin_constraints::greater_than_or_equals(vec![var.scaled(1)], 1, tag),
         activity_literal,
     );
-    state.post_implied(pumpkin_solver::equals(vec![var.scaled(1)], 0, tag), !activity_literal);
+    state.post_implied(pumpkin_constraints::equals(vec![var.scaled(1)], 0, tag), !activity_literal);
     Ok((activity_var, activity_literal))
 }
 
@@ -875,17 +880,17 @@ fn add_routing_variables(problem: &OptimizerProblem, state: &mut ModelState) -> 
         let (activity_var, activity_literal) = new_activity(state);
         let lane_upper: BigInt = recipe_patterns.iter().map(|(_, _, ub)| ub.clone()).sum();
         if lane_upper.is_zero() {
-            state.post(pumpkin_solver::equals(vec![activity_var.scaled(1)], 0, tag));
+            state.post(pumpkin_constraints::equals(vec![activity_var.scaled(1)], 0, tag));
         } else {
             let _ = checked_i32(&lane_upper, &format!("{} selected-bank upper bound", recipe.id))?;
             let label = format!("{} selected-bank sum", recipe.id);
             let lane_total = sum_variable(state, recipe_patterns, &label)?.var;
             state.post_implied(
-                pumpkin_solver::greater_than_or_equals(vec![lane_total.scaled(1)], 1, tag),
+                pumpkin_constraints::greater_than_or_equals(vec![lane_total.scaled(1)], 1, tag),
                 activity_literal,
             );
             state.post_implied(
-                pumpkin_solver::equals(vec![lane_total.scaled(1)], 0, tag),
+                pumpkin_constraints::equals(vec![lane_total.scaled(1)], 0, tag),
                 !activity_literal,
             );
             let _ = recipe_lane_sums.insert(recipe_index, (lane_total, lane_upper));
@@ -966,7 +971,7 @@ fn add_routing_variables(problem: &OptimizerProblem, state: &mut ModelState) -> 
         );
         let routing_needed = state.solver.new_literal();
         if destination_upper.is_zero() {
-            state.post(pumpkin_solver::equals(vec![routing_var.scaled(1)], 0, tag));
+            state.post(pumpkin_constraints::equals(vec![routing_var.scaled(1)], 0, tag));
             let false_clause =
                 state.solver.add_clause([(!routing_needed).get_true_predicate()], tag);
             if false_clause.is_err() {
@@ -995,21 +1000,21 @@ fn add_routing_variables(problem: &OptimizerProblem, state: &mut ModelState) -> 
 
             // routing_needed -> 1 <= difference <= destinations
             state.post_implied(
-                pumpkin_solver::greater_than_or_equals(difference.clone(), 1, tag),
+                pumpkin_constraints::greater_than_or_equals(difference.clone(), 1, tag),
                 routing_needed,
             );
             state.post_implied(
-                pumpkin_solver::less_than_or_equals(difference.clone(), destination_rhs, tag),
+                pumpkin_constraints::less_than_or_equals(difference.clone(), destination_rhs, tag),
                 routing_needed,
             );
             // !routing_needed -> difference <= 0
             state.post_implied(
-                pumpkin_solver::less_than_or_equals(difference.clone(), 0, tag),
+                pumpkin_constraints::less_than_or_equals(difference.clone(), 0, tag),
                 !routing_needed,
             );
             // !routing_needed -> routing = 0
             state.post_implied(
-                pumpkin_solver::equals(vec![routing_var.scaled(1)], 0, tag),
+                pumpkin_constraints::equals(vec![routing_var.scaled(1)], 0, tag),
                 !routing_needed,
             );
             // routing_needed -> 0 <= 2 * routing - difference <= 1
@@ -1019,10 +1024,10 @@ fn add_routing_variables(problem: &OptimizerProblem, state: &mut ModelState) -> 
                 ceiling.push(lane_total.scaled(1));
             }
             state.post_implied(
-                pumpkin_solver::greater_than_or_equals(ceiling.clone(), 0, tag),
+                pumpkin_constraints::greater_than_or_equals(ceiling.clone(), 0, tag),
                 routing_needed,
             );
-            state.post_implied(pumpkin_solver::less_than_or_equals(ceiling, 1, tag), routing_needed);
+            state.post_implied(pumpkin_constraints::less_than_or_equals(ceiling, 1, tag), routing_needed);
         }
         state
             .routing_variables
@@ -1136,7 +1141,7 @@ fn build_objectives(problem: &OptimizerProblem, state: &mut ModelState) -> Resul
         });
         let views = sum_term_views(&top, label)?;
         let tag = state.tag;
-        state.post(pumpkin_solver::equals(views, 0, tag));
+        state.post(pumpkin_constraints::equals(views, 0, tag));
         state.objectives.push(Objective {
             label,
             maximize,
@@ -1193,7 +1198,7 @@ fn add_bank_representation_links(state: &mut ModelState) {
     let tag = state.tag;
     let totals = state.bank_link_totals.clone();
     for total in totals {
-        state.post(pumpkin_solver::equals(vec![total.scaled(1)], 0, tag));
+        state.post(pumpkin_constraints::equals(vec![total.scaled(1)], 0, tag));
     }
 }
 
@@ -1214,7 +1219,7 @@ fn tighten_pattern_domains(state: &mut ModelState, physical_machine_optimum: &Bi
         .collect();
     for (var, upper) in updates {
         let rhs = checked_i32(&upper, "post-machine multiplicity upper bound")?;
-        state.post(pumpkin_solver::less_than_or_equals(vec![var.scaled(1)], rhs, tag));
+        state.post(pumpkin_constraints::less_than_or_equals(vec![var.scaled(1)], rhs, tag));
     }
     Ok(())
 }
@@ -1222,6 +1227,137 @@ fn tighten_pattern_domains(state: &mut ModelState, physical_machine_optimum: &Bi
 // ---------------------------------------------------------------------------
 // Lexicographic solve
 // ---------------------------------------------------------------------------
+
+/// Deterministic search strategy: VSIDS-style autonomous search with an
+/// input-order / smallest-value backup brancher. The default backup (random
+/// selector + random splitter) explores huge bank-multiplicity domains
+/// aimlessly on this model; assigning lower bounds first reaches feasible
+/// solutions immediately.
+type SearchBrancher =
+    AutonomousSearch<IndependentVariableValueBrancher<DomainId, InputOrder<DomainId>, InDomainMin>>;
+
+fn search_brancher(state: &ModelState) -> SearchBrancher {
+    AutonomousSearch::new(IndependentVariableValueBrancher::new(
+        InputOrder::new(&state.int_vars),
+        InDomainMin,
+    ))
+}
+
+/// Combines an optional warm-start hint (the analog of CP-SAT solution hints
+/// used by optimizer.ts between phases) with the standard search strategy.
+fn phase_brancher(state: &ModelState, hint: &[(DomainId, i32)]) -> DynamicBrancher {
+    let variables: Vec<DomainId> = hint.iter().map(|(var, _)| *var).collect();
+    let values: Vec<i32> = hint.iter().map(|(_, value)| *value).collect();
+    DynamicBrancher::new(vec![
+        Box::new(WarmStart::new(&variables, &values)),
+        Box::new(search_brancher(state)),
+    ])
+}
+
+/// Full previous-solution hint (optimizer.ts `installCompleteSolutionHint`).
+fn complete_solution_hint(state: &ModelState, solution: &Solution) -> Vec<(DomainId, i32)> {
+    state
+        .int_vars
+        .iter()
+        .map(|&var| (var, solution.get_integer_value(var)))
+        .collect()
+}
+
+/// Maps the compact production solution onto one-machine banks
+/// (optimizer.ts `installInitialBankHint`), used for the physical-machine
+/// phase right after the bank representation links are added.
+fn initial_bank_hint(state: &ModelState, solution: &Solution) -> Result<Vec<(DomainId, i32)>, String> {
+    let mut bank_values: BTreeMap<usize, i32> = BTreeMap::new();
+    for (pattern_index, entry) in state.patterns.iter().enumerate() {
+        if entry.pattern.machines.is_one() {
+            let _ = bank_values.insert(pattern_index, 0);
+        }
+    }
+    for entry in &state.production {
+        let value = solution.get_integer_value(entry.var);
+        let bank_index = state
+            .patterns
+            .iter()
+            .position(|candidate| {
+                candidate.pattern.recipe == entry.pattern.recipe
+                    && candidate.pattern.machines.is_one()
+                    && candidate.pattern.effective_machines == entry.pattern.effective_machines
+            })
+            .ok_or("Missing one-machine bank representation for production hint")?;
+        let slot = bank_values.entry(bank_index).or_insert(0);
+        *slot += value;
+    }
+
+    let mut hint: Vec<(DomainId, i32)> = Vec::new();
+    for entry in &state.production {
+        hint.push((entry.var, solution.get_integer_value(entry.var)));
+    }
+    for (pattern_index, entry) in state.patterns.iter().enumerate() {
+        hint.push((entry.var, bank_values.get(&pattern_index).copied().unwrap_or(0)));
+    }
+    for withdrawal in state.target_variables.values().chain(state.excess_variables.values()) {
+        hint.push((withdrawal.var, solution.get_integer_value(withdrawal.var)));
+    }
+    Ok(hint)
+}
+
+/// Rewrites the bank solution into its canonical symmetry representative
+/// (optimizer.ts `installCanonicalBankHint`), used for the group phase right
+/// after the post-machine domain reductions.
+fn canonical_bank_hint(state: &ModelState, solution: &Solution) -> Result<Vec<(DomainId, i32)>, String> {
+    let mut bank_values: BTreeMap<usize, i64> = BTreeMap::new();
+    for (pattern_index, entry) in state.patterns.iter().enumerate() {
+        let _ = bank_values.insert(pattern_index, i64::from(solution.get_integer_value(entry.var)));
+    }
+    let mut ascending: Vec<usize> = (0..state.patterns.len()).collect();
+    ascending.sort_by(|&left, &right| {
+        state.patterns[left]
+            .pattern
+            .effective_machines
+            .cmp(&state.patterns[right].pattern.effective_machines)
+    });
+    for pattern_index in ascending {
+        let entry = &state.patterns[pattern_index];
+        if entry.symmetry_upper_bound >= entry.upper_bound {
+            continue;
+        }
+        let copies = &entry.symmetry_upper_bound + BigInt::one();
+        let replacement_effective = entry.pattern.effective_machines.clone()
+            * BigRational::from_integer(copies.clone());
+        let replacement = state
+            .patterns
+            .iter()
+            .position(|candidate| {
+                candidate.pattern.recipe == entry.pattern.recipe
+                    && candidate.pattern.effective_machines == replacement_effective
+                    && candidate.pattern.machines <= entry.pattern.machines.clone() * &copies
+            })
+            .ok_or("Missing canonical replacement bank for hint")?;
+        let copies: i64 = copies
+            .to_i64()
+            .ok_or("Symmetry radix exceeds the supported integer range")?;
+        let value = bank_values.get(&pattern_index).copied().unwrap_or(0);
+        let transfers = value / copies;
+        let _ = bank_values.insert(pattern_index, value % copies);
+        let slot = bank_values.entry(replacement).or_insert(0);
+        *slot += transfers;
+    }
+
+    let mut hint: Vec<(DomainId, i32)> = Vec::new();
+    for entry in &state.production {
+        hint.push((entry.var, solution.get_integer_value(entry.var)));
+    }
+    for (pattern_index, entry) in state.patterns.iter().enumerate() {
+        let value = bank_values.get(&pattern_index).copied().unwrap_or(0);
+        let value =
+            i32::try_from(value).map_err(|_| "Bank hint exceeds the 32-bit range".to_string())?;
+        hint.push((entry.var, value));
+    }
+    for withdrawal in state.target_variables.values().chain(state.excess_variables.values()) {
+        hint.push((withdrawal.var, solution.get_integer_value(withdrawal.var)));
+    }
+    Ok(hint)
+}
 
 struct MaybeTimeBudget(Option<TimeBudget>);
 
@@ -1510,9 +1646,9 @@ fn extract_result(
 /// the full model (no objective), for performance diagnosis.
 #[doc(hidden)]
 pub fn probe_satisfy(problem: &OptimizerProblem, time_limit_ms: u64) -> Result<String, String> {
-    use pumpkin_solver::core::results::SatisfactionResult;
+    use pumpkin_core::results::SatisfactionResult;
 
-    pumpkin_solver::core::statistics::configure_statistic_logging("stat:", None, None, None);
+    pumpkin_core::statistics::configure_statistic_logging("stat:", None, None, None);
     let mut state = build_model(problem)?;
     eprintln!(
         "model: {} production vars, {} pattern vars, {} targets, {} excess, {} routing",
@@ -1530,7 +1666,7 @@ pub fn probe_satisfy(problem: &OptimizerProblem, time_limit_ms: u64) -> Result<S
             time_limit_ms,
         ))));
     let started = now_ms();
-    let mut brancher = state.solver.default_brancher();
+    let mut brancher = search_brancher(&state);
     let mut resolver = ResolutionResolver::default();
     let result = state.solver.satisfy(&mut brancher, &mut termination, &mut resolver);
     let elapsed = now_ms() - started;
@@ -1568,6 +1704,7 @@ pub fn solve_exact_production(
 
     let mut phase_timings: Vec<(String, f64)> = Vec::new();
     let mut last_solution: Option<Solution> = None;
+    let mut next_phase_hint: Vec<(DomainId, i32)> = Vec::new();
     let phase_count = state.objectives.len();
 
     for index in 0..phase_count {
@@ -1584,11 +1721,11 @@ pub fn solve_exact_production(
         };
         let callback = |_: &Solver,
                         _: SolutionReference,
-                        _: &DefaultBrancher,
+                        _: &DynamicBrancher,
                         _: &ResolutionResolver|
          -> ControlFlow<()> { ControlFlow::Continue(()) };
 
-        let mut brancher = state.solver.default_brancher();
+        let mut brancher = phase_brancher(&state, &next_phase_hint);
         let mut resolver = ResolutionResolver::default();
         let result = state.solver.optimise(
             &mut brancher,
@@ -1602,7 +1739,7 @@ pub fn solve_exact_production(
             OptimisationResult::Optimal(solution) => {
                 let optimum = solution.get_integer_value(objective_var);
                 let tag = state.tag;
-                state.post(pumpkin_solver::equals(vec![objective_var.scaled(1)], optimum, tag));
+                state.post(pumpkin_constraints::equals(vec![objective_var.scaled(1)], optimum, tag));
                 if state.build_infeasible {
                     return Err(format!(
                         "Fixing the {objective_label} optimum made the model infeasible"
@@ -1610,6 +1747,7 @@ pub fn solve_exact_production(
                 }
                 if index == 1 {
                     add_bank_representation_links(&mut state);
+                    next_phase_hint = initial_bank_hint(&state, &solution)?;
                 } else if index == 2 {
                     // Recover the true machine count from the scaled optimum.
                     let objective = &state.objectives[index];
@@ -1625,6 +1763,9 @@ pub fn solve_exact_production(
                         return Err("Physical-machine optimum is negative".to_string());
                     }
                     tighten_pattern_domains(&mut state, &machines_optimum)?;
+                    next_phase_hint = canonical_bank_hint(&state, &solution)?;
+                } else {
+                    next_phase_hint = complete_solution_hint(&state, &solution);
                 }
                 if state.build_infeasible {
                     return Err(format!(

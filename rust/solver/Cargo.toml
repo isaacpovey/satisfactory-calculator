@@ -15,7 +15,10 @@ num-rational = "0.4"
 num-traits = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-pumpkin-solver = "0.4"
+# Component crates instead of the pumpkin-solver facade: the facade depends on
+# signal-hook (for its CLI), which does not compile for wasm32-unknown-unknown.
+pumpkin-core = "0.4"
+pumpkin-constraints = "0.4"
 pumpkin-conflict-resolvers = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
