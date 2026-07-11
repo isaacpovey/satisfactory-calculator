@@ -31,11 +31,13 @@ export function chainIntermediariesForPlanner(
   const roots = [...targets.map((t) => t.item), ...(Object.keys(excessFloors) as ItemId[])];
   return collectChainIntermediates(roots)
     .filter((id) => !itemById[id]?.isIngot)
-    .sort((a, b) => (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b));
+    .toSorted((a, b) => (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b));
 }
 
 function sortItemIds(ids: Iterable<ItemId>): ItemId[] {
-  return [...ids].sort((a, b) => (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b));
+  return [...ids].toSorted((a, b) =>
+    (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b),
+  );
 }
 
 /** Items shown in the excess panel: chain intermediaries plus floored roots. */
