@@ -2,24 +2,30 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Save } from "lucide-react";
+import { ArrowRight, Copy, Pencil } from "lucide-react";
 import { itemById } from "@/data/items";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ORE_SWATCH, Section, UtilMeter } from "@/components/planner/results/shared";
 import { TargetsSummary } from "@/components/planner/results/targets-summary";
-import { InputsSummary } from "@/components/planner/prototype/inputs-summary";
-import { SaveFactoryDialog } from "@/components/planner/prototype/save-factory-dialog";
+import { InputsSummary } from "@/components/planner/factory/inputs-summary";
+import {
+  CopyFactoryDialog,
+  RenameFactoryDialog,
+} from "@/components/planner/factory/rename-factory-dialog";
 import { formatPercent } from "@/lib/solver/format";
 import { cn } from "@/lib/utils";
 import type { SavedFactory } from "@/lib/factory-storage";
 
 interface SummaryViewProps {
   factory: SavedFactory;
+  onFactoryUpdate?: (factory: SavedFactory) => void;
+  onViewBuild?: () => void;
 }
 
-export function SummaryView({ factory }: SummaryViewProps) {
+export function SummaryView({ factory, onFactoryUpdate, onViewBuild }: SummaryViewProps) {
   const { result } = factory;
-  const [saveOpen, setSaveOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
   const activeExcess = result.excess.filter((e) => e.rate > 1e-6);
   const shortfalls = result.raws.filter((r) => r.shortfall > 1e-6);
 
@@ -112,25 +118,34 @@ export function SummaryView({ factory }: SummaryViewProps) {
       </div>
 
       <div className="flex flex-wrap gap-3 border-t border-foreground/8 pt-6">
-        <Link
-          href={`/prototype/factory/${factory.id}/build`}
-          className={buttonVariants({ size: "lg" })}
-        >
-          View build plan
-          <ArrowRight className="size-4" />
-        </Link>
-        <Button variant="outline" size="lg" onClick={() => setSaveOpen(true)}>
-          <Save className="size-4" />
-          Save as factory
+        {onViewBuild ? (
+          <Button size="lg" onClick={onViewBuild}>
+            View build plan
+            <ArrowRight className="size-4" />
+          </Button>
+        ) : (
+          <Link href={`/factory?id=${factory.id}&view=build`} className={buttonVariants({ size: "lg" })}>
+            View build plan
+            <ArrowRight className="size-4" />
+          </Link>
+        )}
+        <Button variant="outline" size="lg" onClick={() => setRenameOpen(true)}>
+          <Pencil className="size-4" />
+          Rename
+        </Button>
+        <Button variant="outline" size="lg" onClick={() => setCopyOpen(true)}>
+          <Copy className="size-4" />
+          Save a copy
         </Button>
       </div>
 
-      <SaveFactoryDialog
-        open={saveOpen}
-        onOpenChange={setSaveOpen}
-        sourceFactory={factory}
-        defaultName={factory.id === "demo" ? "My factory" : `${factory.name} (copy)`}
+      <RenameFactoryDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        factory={factory}
+        onRenamed={onFactoryUpdate}
       />
+      <CopyFactoryDialog open={copyOpen} onOpenChange={setCopyOpen} sourceFactory={factory} />
     </div>
   );
 }

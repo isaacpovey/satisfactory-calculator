@@ -57,3 +57,11 @@ export function overallBuildProgress(
   const built = sections.filter((s) => builtSections.has(s.id)).length;
   return { built, total: sections.length };
 }
+
+export function reconcileBuiltSections(
+  builtSections: string[],
+  result: SolveResult,
+): string[] {
+  const valid = new Set(buildSectionsForResult(result).map((s) => s.id));
+  return builtSections.filter((id) => valid.has(id));
+}

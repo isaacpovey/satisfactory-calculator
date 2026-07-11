@@ -3,12 +3,12 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ProductionStage } from "@/lib/solver/types";
 import { StageCard } from "@/components/planner/results/stage-card";
-import { BuildSectionCheckbox } from "@/components/planner/prototype/build-section-checkbox";
+import { BuildSectionCheckbox } from "@/components/planner/factory/build-section-checkbox";
 import {
   StageNav,
   StageNavChips,
   useActiveStageScroll,
-} from "@/components/planner/prototype/stage-nav";
+} from "@/components/planner/factory/stage-nav";
 import { toggleBuiltSection, type SavedFactory } from "@/lib/factory-storage";
 import { formatClock } from "@/lib/solver/constraints";
 import { formatMachines } from "@/lib/solver/format";

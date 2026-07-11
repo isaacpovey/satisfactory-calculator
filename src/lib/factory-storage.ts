@@ -1,6 +1,9 @@
-import type { PlannerInput, SolveResult } from "@/lib/solver/types";
+import type { PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import { itemById } from "@/data/items";
+import { reconcileBuiltSections } from "@/lib/build-sections";
 
 export const FACTORIES_STORAGE_KEY = "satisfactory-factories:v1";
+export const SESSION_FACTORY_ID_KEY = "satisfactory-session-factory-id";
 
 export interface SavedFactory {
   id: string;
@@ -100,6 +103,76 @@ export function createFactoryId(): string {
     return crypto.randomUUID();
   }
   return `factory-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export function deriveFactoryName(targets: TargetSpec[]): string {
+  if (targets.length === 0) return "Untitled factory";
+  const names = targets.slice(0, 3).map((t) => itemById[t.item]?.name ?? t.item);
+  const suffix = targets.length > 3 ? ` +${targets.length - 3}` : "";
+  return `${names.join(" · ")}${suffix}`;
+}
+
+export function getSessionFactoryId(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage.getItem(SESSION_FACTORY_ID_KEY);
+}
+
+export function setSessionFactoryId(id: string): void {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(SESSION_FACTORY_ID_KEY, id);
+}
+
+export function saveFactoryFromCompute(
+  input: PlannerInput,
+  result: SolveResult,
+  options?: { id?: string; name?: string; preserveBuiltSections?: boolean },
+): SavedFactory | null {
+  const existingId = options?.id ?? getSessionFactoryId();
+  const existing = existingId ? getFactory(existingId) : null;
+  const id = existingId ?? createFactoryId();
+  const builtSections =
+    options?.preserveBuiltSections && existing
+      ? reconcileBuiltSections(existing.builtSections, result)
+      : existing?.builtSections ?? [];
+
+  const factory: SavedFactory = {
+    id,
+    name: options?.name ?? existing?.name ?? deriveFactoryName(input.targets),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+    plannerInput: input,
+    result,
+    builtSections,
+  };
+
+  if (!saveFactory(factory)) return null;
+  setSessionFactoryId(id);
+  return factory;
+}
+
+export function renameFactory(id: string, name: string): SavedFactory | null {
+  const factory = getFactory(id);
+  if (!factory) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const updated: SavedFactory = { ...factory, name: trimmed };
+  if (!saveFactory(updated)) return null;
+  return updated;
+}
+
+export function copyFactory(source: SavedFactory, name: string): SavedFactory | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const id = createFactoryId();
+  const copy: SavedFactory = {
+    id,
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+    plannerInput: source.plannerInput,
+    result: source.result,
+    builtSections: [...source.builtSections],
+  };
+  if (!saveFactory(copy)) return null;
+  return copy;
 }
 
 export const DEMO_FACTORY_ID = "demo";
