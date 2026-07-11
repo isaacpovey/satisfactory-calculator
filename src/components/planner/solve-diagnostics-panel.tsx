@@ -83,6 +83,13 @@ export function SolveDiagnosticsPanel({
           </p>
         ) : null}
 
+        {activeProgress?.label === "total splitter and merger devices" ? (
+          <p className="text-muted-foreground">
+            Minimizing splitter and merger devices is often the longest phase on large factories.
+            Low CPU use is normal while CP-SAT finishes its optimality proof.
+          </p>
+        ) : null}
+
         {completedPhases.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[20rem] text-left tabular-nums">
