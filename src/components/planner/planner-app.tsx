@@ -256,29 +256,6 @@ export function PlannerApp() {
     [],
   );
 
-  const initialComputeDone = useRef(false);
-
-  // Initial compute after hydrate (uses saved or default draft).
-  useEffect(() => {
-    if (!hydrated || initialComputeDone.current || result !== null || computing) return;
-    initialComputeDone.current = true;
-    runCompute({
-      rawAvailable,
-      targets,
-      excess: buildExcessInput(excessFloors),
-      maxBeltCapacity,
-    });
-  }, [
-    hydrated,
-    result,
-    computing,
-    rawAvailable,
-    targets,
-    excessFloors,
-    maxBeltCapacity,
-    runCompute,
-  ]);
-
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-8">
       <header className="max-w-2xl space-y-3">
