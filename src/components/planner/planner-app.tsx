@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
@@ -130,10 +138,17 @@ export function PlannerApp() {
 
   const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
 
+  const deferredTargets = useDeferredValue(targets);
+  const sparePartsRecomputing = !hydrated || targets !== deferredTargets;
+
   const excessItemIds = useMemo(
-    () => (hydrated ? excessPanelItems(targets) : []),
-    [hydrated, targets],
+    () => (hydrated ? excessPanelItems(deferredTargets) : []),
+    [hydrated, deferredTargets],
   );
+
+  const handleTargetsChange = useCallback((next: TargetSpec[]) => {
+    startTransition(() => setTargets(next));
+  }, []);
 
   const applyGlobalMinimum = useCallback(
     (rate: number) => {
@@ -304,10 +319,11 @@ export function PlannerApp() {
             onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
           />
           <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
-          <TargetsPanel targets={targets} onChange={setTargets} />
+          <TargetsPanel targets={targets} onChange={handleTargetsChange} />
           <ExcessPanel
             excess={excessRows}
             floors={excessFloors}
+            loading={sparePartsRecomputing}
             onApplyGlobalMinimum={applyGlobalMinimum}
             onFloorChange={(item, rate) =>
               setExcessFloors((prev) => ({
