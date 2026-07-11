@@ -19,7 +19,14 @@
   "options": {
     "typeAware": true,
   },
-  "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**"],
+  "ignorePatterns": [
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "node_modules/**",
+    "scripts/**",
+  ],
   "rules": {
     "typescript/no-explicit-any": "error",
     "typescript/consistent-type-imports": [
