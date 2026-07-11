@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
@@ -9,6 +10,11 @@ import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
 import { solveExact } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
 import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import {
+  completedPhaseTiming,
+  readSolverRuntimeInfo,
+  type CompletedPhaseTiming,
+} from "@/lib/solver/runtime-diagnostics";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BeltTierPanel } from "./belt-tier-panel";
@@ -16,6 +22,7 @@ import { RawInputsPanel } from "./raw-inputs-panel";
 import { TargetsPanel } from "./targets-panel";
 import { ExcessPanel } from "./excess-panel";
 import { ResultsPanel } from "./results-panel";
+import { SolveDiagnosticsPanel } from "./solve-diagnostics-panel";
 
 const defaultRaws: Partial<Record<ItemId, number>> = {
   "iron-ore": 120,
@@ -63,6 +70,8 @@ export function PlannerApp() {
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
   const [solveProgress, setSolveProgress] = useState<ExactSolveProgress | null>(null);
+  const [completedPhases, setCompletedPhases] = useState<CompletedPhaseTiming[]>([]);
+  const [solverRuntime] = useState(readSolverRuntimeInfo);
   const [solveElapsedSeconds, setSolveElapsedSeconds] = useState(0);
   const [showDetailedProgress, setShowDetailedProgress] = useState(false);
   const [solveError, setSolveError] = useState<string | null>(null);
@@ -137,13 +146,22 @@ export function PlannerApp() {
     const gen = ++computeGen.current;
     setComputing(true);
     setSolveProgress(null);
+    setCompletedPhases([]);
     setSolveError(null);
     setChanges(emptyChanges());
 
     void solveExact(input, {
       signal: controller.signal,
       onProgress: (progress) => {
-        if (gen === computeGen.current) setSolveProgress(progress);
+        if (gen !== computeGen.current) return;
+        setSolveProgress(progress);
+        const timing = completedPhaseTiming(progress);
+        if (timing) {
+          setCompletedPhases((previous) => {
+            if (previous.some((entry) => entry.phase === timing.phase)) return previous;
+            return [...previous, timing];
+          });
+        }
       },
     })
       .then((next) => {
@@ -174,6 +192,7 @@ export function PlannerApp() {
     computeGen.current++;
     setComputing(false);
     setSolveProgress(null);
+    setCompletedPhases([]);
     setSolveError("Solve cancelled before optimality was proven.");
   }, []);
 
@@ -286,6 +305,12 @@ export function PlannerApp() {
                 "Compute plan"
               )}
             </Button>
+            <SolveDiagnosticsPanel
+              runtime={solverRuntime}
+              activeProgress={computing ? solveProgress : null}
+              completedPhases={completedPhases}
+              open={showDetailedProgress}
+            />
           </div>
         </aside>
 
@@ -303,7 +328,10 @@ export function PlannerApp() {
 
       <footer className="border-t border-foreground/8 pt-4 text-xs text-muted-foreground">
         Exact recipe-specific clocks · globally optimal machine banks · conserved item flows ·
-        demand-balanced manifolds · saved in this browser
+        demand-balanced manifolds · saved in this browser ·{" "}
+        <Link href="/benchmark" className="underline underline-offset-2 hover:text-foreground">
+          solver benchmark
+        </Link>
       </footer>
     </div>
   );
