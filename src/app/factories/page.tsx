@@ -84,9 +84,7 @@ export default function FactoriesPage() {
                       className="h-full rounded-full bg-primary"
                       style={{
                         width:
-                          progress.total > 0
-                            ? `${(progress.built / progress.total) * 100}%`
-                            : "0%",
+                          progress.total > 0 ? `${(progress.built / progress.total) * 100}%` : "0%",
                       }}
                     />
                   </div>

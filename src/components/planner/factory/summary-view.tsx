@@ -36,8 +36,8 @@ export function SummaryView({ factory, onFactoryUpdate, onViewBuild }: SummaryVi
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-util-high/10 px-4 py-3 text-sm ring-1 ring-util-high/25">
           <p className="font-heading font-semibold text-util-high">Globally optimal plan</p>
           <p className="text-xs text-muted-foreground">
-            {result.objective?.physicalMachines ?? 0} machines ·{" "}
-            {result.objective?.groups ?? 0} groups · {result.network.stages.length} stages
+            {result.objective?.physicalMachines ?? 0} machines · {result.objective?.groups ?? 0}{" "}
+            groups · {result.network.stages.length} stages
           </p>
         </div>
       ) : null}
@@ -132,7 +132,10 @@ export function SummaryView({ factory, onFactoryUpdate, onViewBuild }: SummaryVi
             <ArrowRight className="size-4" />
           </Button>
         ) : (
-          <Link href={`/factory?id=${factory.id}&view=build`} className={buttonVariants({ size: "lg" })}>
+          <Link
+            href={`/factory?id=${factory.id}&view=build`}
+            className={buttonVariants({ size: "lg" })}
+          >
             View build plan
             <ArrowRight className="size-4" />
           </Link>

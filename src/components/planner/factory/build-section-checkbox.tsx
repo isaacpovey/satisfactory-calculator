@@ -34,10 +34,7 @@ export function BuildSectionCheckbox({
           aria-label={`Mark ${label} as built`}
         />
         <span
-          className={cn(
-            "text-sm font-medium",
-            checked && "text-muted-foreground line-through",
-          )}
+          className={cn("text-sm font-medium", checked && "text-muted-foreground line-through")}
         >
           {label}
         </span>

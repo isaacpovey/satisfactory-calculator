@@ -18,10 +18,7 @@ interface BuildViewProps {
   onFactoryUpdate: (factory: SavedFactory) => void;
 }
 
-function bankLabel(
-  stage: ProductionStage,
-  bankIndex: number,
-): string {
+function bankLabel(stage: ProductionStage, bankIndex: number): string {
   const group = stage.groups[bankIndex];
   if (!group) return `Bank ${bankIndex + 1}`;
   return `Bank ${bankIndex + 1} · ${formatMachines(group.machines)} @ ${formatClock(group.clock)}`;
@@ -95,12 +92,11 @@ export function BuildView({ factory, onFactoryUpdate }: BuildViewProps) {
                     network={network}
                     maxBeltCapacity={result.maxBeltCapacity}
                     renderSection={(sectionId, label, children) => {
-                      const displayLabel =
-                        sectionId.endsWith(":inputs")
-                          ? "Input belts"
-                          : sectionId.includes(":bank:")
-                            ? bankLabel(stage, Number(sectionId.split(":").pop()))
-                            : label;
+                      const displayLabel = sectionId.endsWith(":inputs")
+                        ? "Input belts"
+                        : sectionId.includes(":bank:")
+                          ? bankLabel(stage, Number(sectionId.split(":").pop()))
+                          : label;
 
                       return (
                         <BuildSectionCheckbox

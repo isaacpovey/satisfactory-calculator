@@ -133,7 +133,7 @@ export function saveFactoryFromCompute(
   const builtSections =
     options?.preserveBuiltSections && existing
       ? reconcileBuiltSections(existing.builtSections, result)
-      : existing?.builtSections ?? [];
+      : (existing?.builtSections ?? []);
 
   const factory: SavedFactory = {
     id,

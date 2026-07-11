@@ -13,12 +13,7 @@ interface StageNavProps {
   onStageClick: (stageId: string) => void;
 }
 
-export function StageNav({
-  result,
-  builtSections,
-  activeStageId,
-  onStageClick,
-}: StageNavProps) {
+export function StageNav({ result, builtSections, activeStageId, onStageClick }: StageNavProps) {
   const network = result.network;
   const chains =
     network.chains.length > 1

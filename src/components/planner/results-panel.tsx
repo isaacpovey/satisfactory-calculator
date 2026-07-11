@@ -10,11 +10,7 @@ import { formatPercent, formatRate } from "@/lib/solver/format";
 import { cn } from "@/lib/utils";
 import { FlowEndpointLink, ItemFlowLink } from "@/components/planner/flow-endpoint-link";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
-import {
-  ORE_SWATCH,
-  Section,
-  UtilMeter,
-} from "@/components/planner/results/shared";
+import { ORE_SWATCH, Section, UtilMeter } from "@/components/planner/results/shared";
 import { TargetsSummary } from "@/components/planner/results/targets-summary";
 import { StageCard } from "@/components/planner/results/stage-card";
 

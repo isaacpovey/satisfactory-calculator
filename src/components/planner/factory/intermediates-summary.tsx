@@ -45,7 +45,9 @@ export function IntermediatesSummary({ items, targets }: IntermediatesSummaryPro
             key={row.item}
             className="grid gap-1 px-4 py-2.5 sm:grid-cols-[1fr_5.5rem_5.5rem_5.5rem] sm:items-baseline sm:gap-3"
           >
-            <span className="truncate text-sm font-medium">{itemById[row.item]?.name ?? row.item}</span>
+            <span className="truncate text-sm font-medium">
+              {itemById[row.item]?.name ?? row.item}
+            </span>
             <span className="text-sm tabular-nums text-muted-foreground sm:text-right">
               <span className="mr-2 text-xs uppercase tracking-wide text-muted-foreground sm:hidden">
                 Produced

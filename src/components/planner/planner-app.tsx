@@ -16,11 +16,7 @@ import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
 import type { ExactSolveProgress } from "@/lib/solver";
 import { loadPlannerState, hasStoredPlannerState, savePlannerState } from "@/lib/planner-storage";
-import {
-  getFactory,
-  saveFactoryFromCompute,
-  setSessionFactoryId,
-} from "@/lib/factory-storage";
+import { getFactory, saveFactoryFromCompute, setSessionFactoryId } from "@/lib/factory-storage";
 import { solveExact } from "@/lib/solver";
 import { excessPanelItems, pruneExcessFloors } from "@/lib/solver/chain-intermediates";
 import type { ExcessResult, ExcessSpec, PlannerInput, TargetSpec } from "@/lib/solver/types";
@@ -209,9 +205,7 @@ export function PlannerApp() {
             excessFloorsFromInput(factory.plannerInput.excess),
           ),
         );
-        setMaxBeltCapacity(
-          factory.plannerInput.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY,
-        );
+        setMaxBeltCapacity(factory.plannerInput.maxBeltCapacity ?? DEFAULT_MAX_BELT_CAPACITY);
         setComputedFingerprint(inputFingerprint(factory.plannerInput));
         editingFactoryIdRef.current = editFactoryId;
         setSessionFactoryId(editFactoryId);
