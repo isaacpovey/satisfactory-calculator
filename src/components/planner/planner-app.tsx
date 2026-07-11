@@ -46,6 +46,32 @@ const defaultTargets: TargetSpec[] = [
   { item: "encased-industrial-beam", minRate: 2, weight: 40 },
 ];
 
+interface PlannerDraftState {
+  rawAvailable: Partial<Record<ItemId, number>>;
+  targets: TargetSpec[];
+  excessFloors: Partial<Record<ItemId, number>>;
+  maxBeltCapacity: number;
+}
+
+function readPlannerDraftState(): PlannerDraftState {
+  const saved = typeof window !== "undefined" ? loadPlannerState() : null;
+  if (saved) {
+    return {
+      rawAvailable: saved.rawAvailable,
+      targets: saved.targets,
+      excessFloors: pruneExcessFloors(saved.targets, saved.excessFloors),
+      maxBeltCapacity: saved.maxBeltCapacity,
+    };
+  }
+
+  return {
+    rawAvailable: defaultRaws,
+    targets: defaultTargets,
+    excessFloors: {},
+    maxBeltCapacity: DEFAULT_MAX_BELT_CAPACITY,
+  };
+}
+
 function inputFingerprint(input: PlannerInput): string {
   return JSON.stringify({
     raw: input.rawAvailable,
@@ -67,11 +93,13 @@ function formatElapsed(seconds: number): string {
 }
 
 export function PlannerApp() {
-  const [rawAvailable, setRawAvailable] = useState<Partial<Record<ItemId, number>>>(defaultRaws);
-  const [targets, setTargets] = useState<TargetSpec[]>(defaultTargets);
-  const [excessFloors, setExcessFloors] = useState<Partial<Record<ItemId, number>>>({});
-  const [maxBeltCapacity, setMaxBeltCapacity] = useState(DEFAULT_MAX_BELT_CAPACITY);
-  const [hydrated, setHydrated] = useState(false);
+  const [rawAvailable, setRawAvailable] = useState(() => readPlannerDraftState().rawAvailable);
+  const [targets, setTargets] = useState(() => readPlannerDraftState().targets);
+  const [excessFloors, setExcessFloors] = useState(() => readPlannerDraftState().excessFloors);
+  const [maxBeltCapacity, setMaxBeltCapacity] = useState(
+    () => readPlannerDraftState().maxBeltCapacity,
+  );
+  const hydrated = typeof window !== "undefined";
 
   const [result, setResult] = useState<SolveResult | null>(null);
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
@@ -86,6 +114,7 @@ export function PlannerApp() {
   const prevResultRef = useRef<SolveResult | null>(null);
   const computeGen = useRef(0);
   const activeSolve = useRef<AbortController | null>(null);
+  const skipPruneForInitialTargets = useRef(true);
 
   const draftInput: PlannerInput = useMemo(
     () => ({
@@ -101,7 +130,10 @@ export function PlannerApp() {
 
   const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
 
-  const excessItemIds = useMemo(() => excessPanelItems(targets), [targets]);
+  const excessItemIds = useMemo(
+    () => (hydrated ? excessPanelItems(targets) : []),
+    [hydrated, targets],
+  );
 
   const applyGlobalMinimum = useCallback(
     (rate: number) => {
@@ -141,22 +173,15 @@ export function PlannerApp() {
   }, [excessItemIds, result, dirty, excessFloors]);
 
   useEffect(() => {
+    if (skipPruneForInitialTargets.current) {
+      skipPruneForInitialTargets.current = false;
+      return;
+    }
     setExcessFloors((prev) => {
       const next = pruneExcessFloors(targets, prev);
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
   }, [targets]);
-
-  useEffect(() => {
-    const saved = loadPlannerState();
-    if (saved) {
-      setRawAvailable(saved.rawAvailable);
-      setTargets(saved.targets);
-      setExcessFloors(saved.excessFloors);
-      setMaxBeltCapacity(saved.maxBeltCapacity);
-    }
-    setHydrated(true);
-  }, []);
 
   useEffect(() => {
     if (!hydrated) return;

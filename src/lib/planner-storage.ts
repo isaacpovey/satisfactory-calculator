@@ -18,8 +18,12 @@ function isItemId(value: unknown): value is ItemId {
 }
 
 function sanitizeNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.max(0, value);
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, value);
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, parsed);
+  }
+  return null;
 }
 
 function sanitizeRaws(value: unknown): Partial<Record<ItemId, number>> | null {
@@ -78,8 +82,8 @@ export function loadPlannerState(): PlannerPersistedState | null {
 
     const rawAvailable = sanitizeRaws(data.rawAvailable);
     const targets = sanitizeTargets(data.targets);
-    const excessFloors = sanitizeExcessFloors(data.excessFloors);
-    if (!rawAvailable || !targets || !excessFloors) return null;
+    const excessFloors = sanitizeExcessFloors(data.excessFloors) ?? {};
+    if (!rawAvailable || !targets) return null;
 
     const rawBelt = data.maxBeltCapacity;
     const maxBeltCapacity =
