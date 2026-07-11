@@ -1,12 +1,9 @@
-import { Suspense } from "react";
-import { PlannerApp } from "@/components/planner/planner-app";
+import PlannerPageClient from "./planner-page-client";
 
 export default function Home() {
   return (
     <main className="flex-1">
-      <Suspense fallback={null}>
-        <PlannerApp />
-      </Suspense>
+      <PlannerPageClient />
     </main>
   );
 }

@@ -90,6 +90,22 @@ function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
+export function PlannerBootstrapLoading() {
+  return (
+    <div
+      className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col items-center justify-center gap-4 px-4 py-8"
+      aria-busy
+      aria-live="polite"
+    >
+      <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+      <div className="space-y-1 text-center">
+        <p className="font-heading text-base font-semibold">Loading saved planner</p>
+        <p className="text-sm text-muted-foreground">Restoring your inputs from this browser</p>
+      </div>
+    </div>
+  );
+}
+
 export function PlannerApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -99,9 +115,7 @@ export function PlannerApp() {
   const [targets, setTargets] = useState(defaultPlannerState.targets);
   const [excessFloors, setExcessFloors] = useState(defaultPlannerState.excessFloors);
   const [maxBeltCapacity, setMaxBeltCapacity] = useState(defaultPlannerState.maxBeltCapacity);
-  const [storageReady, setStorageReady] = useState(
-    () => typeof window === "undefined" || !hasStoredPlannerState(),
-  );
+  const [storageReady, setStorageReady] = useState(false);
 
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
@@ -348,19 +362,7 @@ export function PlannerApp() {
   }, [storageReady, computing, editFactoryId, draftInput, runCompute]);
 
   if (!storageReady) {
-    return (
-      <div
-        className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col items-center justify-center gap-4 px-4 py-8"
-        aria-busy
-        aria-live="polite"
-      >
-        <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
-        <div className="space-y-1 text-center">
-          <p className="font-heading text-base font-semibold">Loading saved planner</p>
-          <p className="text-sm text-muted-foreground">Restoring your inputs from this browser</p>
-        </div>
-      </div>
-    );
+    return <PlannerBootstrapLoading />;
   }
 
   return (
