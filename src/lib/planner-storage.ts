@@ -18,8 +18,12 @@ function isItemId(value: unknown): value is ItemId {
 }
 
 function sanitizeNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.max(0, value);
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, value);
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, parsed);
+  }
+  return null;
 }
 
 function sanitizeRaws(value: unknown): Partial<Record<ItemId, number>> | null {
@@ -66,6 +70,20 @@ function sanitizeExcessFloors(value: unknown): Partial<Record<ItemId, number>> |
   return out;
 }
 
+export function hasStoredPlannerState(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(PLANNER_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as unknown;
+    return (
+      !!parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).version === 1
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function loadPlannerState(): PlannerPersistedState | null {
   if (typeof window === "undefined") return null;
   try {
@@ -78,8 +96,8 @@ export function loadPlannerState(): PlannerPersistedState | null {
 
     const rawAvailable = sanitizeRaws(data.rawAvailable);
     const targets = sanitizeTargets(data.targets);
-    const excessFloors = sanitizeExcessFloors(data.excessFloors);
-    if (!rawAvailable || !targets || !excessFloors) return null;
+    const excessFloors = sanitizeExcessFloors(data.excessFloors) ?? {};
+    if (!rawAvailable || !targets) return null;
 
     const rawBelt = data.maxBeltCapacity;
     const maxBeltCapacity =

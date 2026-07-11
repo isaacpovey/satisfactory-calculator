@@ -1,15 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { DEFAULT_MAX_BELT_CAPACITY } from "@/data/belts";
 import type { ItemId } from "@/data/types";
 import type { ExactSolveProgress } from "@/lib/solver";
-import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
+import { loadPlannerState, hasStoredPlannerState, savePlannerState } from "@/lib/planner-storage";
 import { solveExact } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
-import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import { excessPanelItems, pruneExcessFloors } from "@/lib/solver/chain-intermediates";
+import type {
+  ExcessResult,
+  ExcessSpec,
+  PlannerInput,
+  SolveResult,
+  TargetSpec,
+} from "@/lib/solver/types";
 import {
   completedPhaseTiming,
   readSolverRuntimeInfo,
@@ -39,6 +54,20 @@ const defaultTargets: TargetSpec[] = [
   { item: "encased-industrial-beam", minRate: 2, weight: 40 },
 ];
 
+interface PlannerDraftState {
+  rawAvailable: Partial<Record<ItemId, number>>;
+  targets: TargetSpec[];
+  excessFloors: Partial<Record<ItemId, number>>;
+  maxBeltCapacity: number;
+}
+
+const defaultPlannerState: PlannerDraftState = {
+  rawAvailable: defaultRaws,
+  targets: defaultTargets,
+  excessFloors: {},
+  maxBeltCapacity: DEFAULT_MAX_BELT_CAPACITY,
+};
+
 function inputFingerprint(input: PlannerInput): string {
   return JSON.stringify({
     raw: input.rawAvailable,
@@ -60,11 +89,13 @@ function formatElapsed(seconds: number): string {
 }
 
 export function PlannerApp() {
-  const [rawAvailable, setRawAvailable] = useState<Partial<Record<ItemId, number>>>(defaultRaws);
-  const [targets, setTargets] = useState<TargetSpec[]>(defaultTargets);
-  const [excessFloors, setExcessFloors] = useState<Partial<Record<ItemId, number>>>({});
-  const [maxBeltCapacity, setMaxBeltCapacity] = useState(DEFAULT_MAX_BELT_CAPACITY);
-  const [hydrated, setHydrated] = useState(false);
+  const [rawAvailable, setRawAvailable] = useState(defaultPlannerState.rawAvailable);
+  const [targets, setTargets] = useState(defaultPlannerState.targets);
+  const [excessFloors, setExcessFloors] = useState(defaultPlannerState.excessFloors);
+  const [maxBeltCapacity, setMaxBeltCapacity] = useState(defaultPlannerState.maxBeltCapacity);
+  const [storageReady, setStorageReady] = useState(
+    () => typeof window === "undefined" || !hasStoredPlannerState(),
+  );
 
   const [result, setResult] = useState<SolveResult | null>(null);
   const [computedFingerprint, setComputedFingerprint] = useState<string | null>(null);
@@ -79,6 +110,7 @@ export function PlannerApp() {
   const prevResultRef = useRef<SolveResult | null>(null);
   const computeGen = useRef(0);
   const activeSolve = useRef<AbortController | null>(null);
+  const skipPruneForInitialTargets = useRef(true);
 
   const draftInput: PlannerInput = useMemo(
     () => ({
@@ -94,19 +126,84 @@ export function PlannerApp() {
 
   const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
 
+  const deferredTargets = useDeferredValue(targets);
+  const sparePartsRecomputing = !storageReady || targets !== deferredTargets;
+
+  const excessItemIds = useMemo(
+    () => (storageReady ? excessPanelItems(deferredTargets) : []),
+    [storageReady, deferredTargets],
+  );
+
+  const handleTargetsChange = useCallback((next: TargetSpec[]) => {
+    startTransition(() => setTargets(next));
+  }, []);
+
+  const applyGlobalMinimum = useCallback(
+    (rate: number) => {
+      if (!Number.isFinite(rate) || rate < 0) return;
+      setExcessFloors((prev) => {
+        const next = { ...prev };
+        for (const id of excessItemIds) {
+          next[id] = rate;
+        }
+        return next;
+      });
+    },
+    [excessItemIds],
+  );
+
+  const excessRows: ExcessResult[] = useMemo(() => {
+    if (result && !dirty) {
+      const solvedByItem = new Map(result.excess.map((row) => [row.item, row]));
+      return excessItemIds.map((item) => {
+        const solved = solvedByItem.get(item);
+        return (
+          solved ?? {
+            item,
+            requestedRate: excessFloors[item] ?? 0,
+            rate: 0,
+            autoRate: 0,
+          }
+        );
+      });
+    }
+    return excessItemIds.map((item) => ({
+      item,
+      requestedRate: excessFloors[item] ?? 0,
+      rate: 0,
+      autoRate: 0,
+    }));
+  }, [excessItemIds, result, dirty, excessFloors]);
+
   useEffect(() => {
+    if (skipPruneForInitialTargets.current) {
+      skipPruneForInitialTargets.current = false;
+      return;
+    }
+    setExcessFloors((prev) => {
+      const next = pruneExcessFloors(targets, prev);
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [targets]);
+
+  useEffect(() => {
+    if (!hasStoredPlannerState()) {
+      setStorageReady(true);
+      return;
+    }
+
     const saved = loadPlannerState();
     if (saved) {
       setRawAvailable(saved.rawAvailable);
       setTargets(saved.targets);
-      setExcessFloors(saved.excessFloors);
+      setExcessFloors(pruneExcessFloors(saved.targets, saved.excessFloors));
       setMaxBeltCapacity(saved.maxBeltCapacity);
     }
-    setHydrated(true);
+    setStorageReady(true);
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!storageReady) return;
     savePlannerState({
       version: 1,
       rawAvailable,
@@ -114,7 +211,7 @@ export function PlannerApp() {
       excessFloors,
       maxBeltCapacity,
     });
-  }, [hydrated, rawAvailable, targets, excessFloors, maxBeltCapacity]);
+  }, [storageReady, rawAvailable, targets, excessFloors, maxBeltCapacity]);
 
   useEffect(() => {
     if (!computing) {
@@ -203,28 +300,21 @@ export function PlannerApp() {
     [],
   );
 
-  const initialComputeDone = useRef(false);
-
-  // Initial compute after hydrate (uses saved or default draft).
-  useEffect(() => {
-    if (!hydrated || initialComputeDone.current || result !== null || computing) return;
-    initialComputeDone.current = true;
-    runCompute({
-      rawAvailable,
-      targets,
-      excess: buildExcessInput(excessFloors),
-      maxBeltCapacity,
-    });
-  }, [
-    hydrated,
-    result,
-    computing,
-    rawAvailable,
-    targets,
-    excessFloors,
-    maxBeltCapacity,
-    runCompute,
-  ]);
+  if (!storageReady) {
+    return (
+      <div
+        className="mx-auto flex min-h-[60vh] w-full max-w-7xl flex-col items-center justify-center gap-4 px-4 py-8"
+        aria-busy
+        aria-live="polite"
+      >
+        <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+        <div className="space-y-1 text-center">
+          <p className="font-heading text-base font-semibold">Loading saved factory</p>
+          <p className="text-sm text-muted-foreground">Restoring your planner from this browser</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-8">
@@ -249,10 +339,12 @@ export function PlannerApp() {
             onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
           />
           <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
-          <TargetsPanel targets={targets} onChange={setTargets} />
+          <TargetsPanel targets={targets} onChange={handleTargetsChange} />
           <ExcessPanel
-            excess={result?.excess ?? []}
+            excess={excessRows}
             floors={excessFloors}
+            loading={sparePartsRecomputing}
+            onApplyGlobalMinimum={applyGlobalMinimum}
             onFloorChange={(item, rate) =>
               setExcessFloors((prev) => ({
                 ...prev,

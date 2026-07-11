@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { itemById } from "@/data/items";
 import type { ExcessResult } from "@/lib/solver/types";
 import { formatRate } from "@/lib/solver/format";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -11,24 +13,25 @@ import { cn } from "@/lib/utils";
 interface ExcessPanelProps {
   excess: ExcessResult[];
   floors: Partial<Record<string, number>>;
+  loading?: boolean;
   onFloorChange: (item: string, rate: number) => void;
+  onApplyGlobalMinimum: (rate: number) => void;
 }
 
-export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps) {
-  const [showIdle, setShowIdle] = useState(false);
+export function ExcessPanel({
+  excess,
+  floors,
+  loading = false,
+  onFloorChange,
+  onApplyGlobalMinimum,
+}: ExcessPanelProps) {
+  const [globalMinimum, setGlobalMinimum] = useState("0");
 
-  const { active, idle } = useMemo(() => {
-    const a: ExcessResult[] = [];
-    const i: ExcessResult[] = [];
-    for (const row of excess) {
-      const floor = floors[row.item] ?? 0;
-      if (row.rate > 1e-6 || floor > 1e-6) a.push(row);
-      else i.push(row);
-    }
-    return { active: a, idle: i };
-  }, [excess, floors]);
-
-  const visible = showIdle ? [...active, ...idle] : active;
+  function applyGlobalMinimum() {
+    const rate = Number(globalMinimum);
+    if (!Number.isFinite(rate) || rate < 0) return;
+    onApplyGlobalMinimum(rate);
+  }
 
   return (
     <section className="flex flex-col gap-3 rounded-xl bg-card/90 p-4 ring-1 ring-foreground/8">
@@ -37,26 +40,54 @@ export function ExcessPanel({ excess, floors, onFloorChange }: ExcessPanelProps)
           <h2 className="font-heading text-base font-semibold">Excess floors</h2>
           <p className="text-sm text-muted-foreground">Optional spare-part minimums</p>
         </div>
-        {idle.length > 0 ? (
-          <button
-            type="button"
-            className="shrink-0 text-xs font-medium text-primary hover:underline"
-            onClick={() => setShowIdle((v) => !v)}
-          >
-            {showIdle ? "Hide idle" : `+${idle.length} idle`}
-          </button>
+        {loading ? (
+          <p className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            <span>Updating…</span>
+          </p>
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2">
-        {excess.length === 0 ? (
+      {excess.length > 0 && !loading ? (
+        <div className="grid gap-2 rounded-lg bg-muted/40 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="grid gap-1">
+            <Label htmlFor="global-excess-floor" className="text-xs">
+              Global minimum
+            </Label>
+            <Input
+              id="global-excess-floor"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              className="h-8 tabular-nums"
+              value={globalMinimum}
+              onChange={(e) => setGlobalMinimum(e.target.value)}
+            />
+          </div>
+          <Button type="button" size="sm" className="h-8" onClick={applyGlobalMinimum}>
+            Apply to all
+          </Button>
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          "flex flex-col gap-2 transition-opacity",
+          loading && excess.length > 0 && "pointer-events-none opacity-50",
+        )}
+      >
+        {loading && excess.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            <span>Loading spare parts…</span>
+          </p>
+        ) : excess.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Add an end product to see chain intermediaries.
           </p>
-        ) : visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active spare parts yet.</p>
         ) : (
-          visible.map((row) => {
+          excess.map((row) => {
             const floor = floors[row.item] ?? 0;
             const isActive = row.rate > 1e-6;
             return (
