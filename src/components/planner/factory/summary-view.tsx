@@ -8,6 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ORE_SWATCH, Section, UtilMeter } from "@/components/planner/results/shared";
 import { TargetsSummary } from "@/components/planner/results/targets-summary";
 import { InputsSummary } from "@/components/planner/factory/inputs-summary";
+import { IntermediatesSummary } from "@/components/planner/factory/intermediates-summary";
 import {
   CopyFactoryDialog,
   RenameFactoryDialog,
@@ -116,6 +117,13 @@ export function SummaryView({ factory, onFactoryUpdate, onViewBuild }: SummaryVi
           <InputsSummary raws={result.raws} />
         </Section>
       </div>
+
+      <Section
+        title="Intermediate items"
+        hint="Production, consumption, and net balance for every manufactured part"
+      >
+        <IntermediatesSummary items={result.items} targets={result.targets} />
+      </Section>
 
       <div className="flex flex-wrap gap-3 border-t border-foreground/8 pt-6">
         {onViewBuild ? (

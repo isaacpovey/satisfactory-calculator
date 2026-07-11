@@ -370,7 +370,7 @@ export function PlannerApp() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-8">
       <header className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
           Satisfactory · Tier 0–4
@@ -397,12 +397,16 @@ export function PlannerApp() {
       </header>
 
       <div className="flex flex-col gap-5">
-        <RawInputsPanel
-          values={rawAvailable}
-          onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
-        />
-        <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
-        <TargetsPanel targets={targets} onChange={handleTargetsChange} />
+        <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+          <div className="flex flex-col gap-5">
+            <RawInputsPanel
+              values={rawAvailable}
+              onChange={(item, value) => setRawAvailable((prev) => ({ ...prev, [item]: value }))}
+            />
+            <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
+          </div>
+          <TargetsPanel targets={targets} onChange={handleTargetsChange} />
+        </div>
         <ExcessPanel
           excess={excessRows}
           floors={excessFloors}
