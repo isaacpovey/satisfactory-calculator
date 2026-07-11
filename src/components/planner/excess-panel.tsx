@@ -73,7 +73,7 @@ export function ExcessPanel({
 
       <div
         className={cn(
-          "flex flex-col gap-2 transition-opacity",
+          "grid gap-2 sm:grid-cols-2 transition-opacity",
           loading && excess.length > 0 && "pointer-events-none opacity-50",
         )}
       >

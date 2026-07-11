@@ -1,21 +1,18 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { itemById } from "@/data/items";
-import type { ItemId } from "@/data/types";
 import type { ExactSolveProgress } from "@/lib/solver";
-import type { FactoryNetwork, ProductionStage, SolveResult } from "@/lib/solver/types";
+import type { ProductionStage, SolveResult } from "@/lib/solver/types";
 import type { ResultChanges } from "@/lib/solver/diff";
 import { emptyChanges } from "@/lib/solver/diff";
 import { formatPercent, formatRate } from "@/lib/solver/format";
 import { cn } from "@/lib/utils";
 import { FlowEndpointLink, ItemFlowLink } from "@/components/planner/flow-endpoint-link";
-import { MergePlanDisplay } from "@/components/planner/merge-plan-display";
 import { SplitterPlanDisplay } from "@/components/planner/splitter-plan-display";
-import { MachineGroupCard } from "@/components/planner/machine-group-card";
-import { DownstreamLanes } from "@/components/planner/downstream-lanes";
-import { StageInputBelts } from "@/components/planner/stage-input-belts";
+import { ORE_SWATCH, Section, UtilMeter } from "@/components/planner/results/shared";
+import { TargetsSummary } from "@/components/planner/results/targets-summary";
+import { StageCard } from "@/components/planner/results/stage-card";
 
 interface ResultsPanelProps {
   result: SolveResult | null;
@@ -26,216 +23,12 @@ interface ResultsPanelProps {
   changes?: ResultChanges;
 }
 
-const ORE_SWATCH: Partial<Record<ItemId, string>> = {
-  "iron-ore": "bg-ore-iron",
-  "copper-ore": "bg-ore-copper",
-  limestone: "bg-ore-limestone",
-  coal: "bg-ore-coal",
-  "caterium-ore": "bg-ore-caterium",
-  "raw-quartz": "bg-ore-quartz",
-  sulfur: "bg-ore-sulfur",
-};
-
 function solveProgressText(progress: ExactSolveProgress, elapsedSeconds: number): string {
   const elapsed =
     elapsedSeconds < 60
       ? `${elapsedSeconds}s`
       : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
   return `Phase ${progress.phase} of ${progress.phaseCount} · ${progress.label} · ${elapsed} elapsed`;
-}
-
-function changedRing(changed: boolean): string {
-  return changed
-    ? "ring-2 ring-primary/55 bg-primary/[0.06] shadow-[0_0_0_1px_oklch(0.5_0.14_42/0.2)]"
-    : "ring-1 ring-foreground/8";
-}
-
-function Section({
-  title,
-  hint,
-  action,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="font-heading text-lg font-semibold tracking-tight">{title}</h2>
-          {hint ? <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function UtilMeter({
-  name,
-  used,
-  available,
-  utilization,
-  leftover,
-  swatch,
-  changed,
-}: {
-  name: string;
-  used: number;
-  available: number;
-  utilization: number;
-  leftover: number;
-  swatch?: string;
-  changed?: boolean;
-}) {
-  const pct = Math.min(100, Math.max(0, utilization * 100));
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-xl bg-card/80 p-3 transition-[box-shadow,background-color] duration-300",
-        changedRing(!!changed),
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn("size-2.5 shrink-0 rounded-full", swatch ?? "bg-primary")}
-            aria-hidden
-          />
-          <span className="truncate font-medium">{name}</span>
-          {changed ? (
-            <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-              updated
-            </span>
-          ) : null}
-        </div>
-        <span className="shrink-0 font-heading text-sm font-semibold tabular-nums">
-          {formatPercent(utilization)}
-        </span>
-      </div>
-      <meter
-        className="h-2.5 w-full overflow-hidden rounded-full bg-muted accent-primary"
-        value={pct}
-        min={0}
-        max={100}
-        aria-label={`${name} utilization`}
-      />
-      <p className="text-xs tabular-nums text-muted-foreground">
-        {formatRate(used)} / {formatRate(available)}
-        {leftover > 1e-6 ? ` · ${formatRate(leftover)} left` : ""}
-      </p>
-    </div>
-  );
-}
-
-function StageCard({
-  stage,
-  network,
-  stageChanged,
-  maxBeltCapacity,
-}: {
-  stage: ProductionStage;
-  network: FactoryNetwork;
-  stageChanged: boolean;
-  maxBeltCapacity: number;
-}) {
-  const outgoing = network.edges.filter(
-    (e) => e.from.kind === "stage" && e.from.id === stage.recipeId,
-  );
-
-  return (
-    <article
-      id={`stage-${stage.recipeId}`}
-      className={cn(
-        "scroll-mt-4 overflow-hidden rounded-xl bg-card/90 transition-[box-shadow] duration-300",
-        changedRing(stageChanged),
-      )}
-    >
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/12 via-secondary/50 to-accent/25 px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-heading text-base font-semibold">{stage.recipeName}</h3>
-            {stageChanged ? (
-              <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                updated
-              </span>
-            ) : null}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {stage.building}
-            {" · "}
-            <ItemFlowLink itemId={stage.primaryOutput} />
-          </p>
-        </div>
-        <p className="font-heading text-lg font-bold tabular-nums text-primary">
-          {formatRate(stage.outputPerMinute)}
-          <span className="ml-0.5 text-xs font-medium text-muted-foreground">/min</span>
-        </p>
-      </header>
-
-      <div className="flex flex-col gap-6 p-4 sm:p-5">
-        <StageInputBelts belts={stage.inputBelts} maxBeltCapacity={maxBeltCapacity} />
-
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Machine banks
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              In-bank splitter manifold after the input belt arrives
-            </p>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-2">
-            {stage.groups.map((g, i) => (
-              <MachineGroupCard
-                key={`${stage.recipeId}-g-${i}`}
-                recipeId={stage.recipeId}
-                group={g}
-                bankIndex={i}
-                inputBelts={stage.inputBelts}
-                maxBeltCapacity={maxBeltCapacity}
-              />
-            ))}
-          </div>
-        </div>
-
-        {stage.outputMerges.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Output belts
-              </p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                One belt per selected bank; shared lanes use demand-balanced backpressure
-              </p>
-            </div>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {stage.outputMerges.map((merge, i) => (
-                <MergePlanDisplay
-                  key={`${stage.recipeId}-merge-${i}`}
-                  plan={merge}
-                  itemId={stage.primaryOutput}
-                  laneIndex={i}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {outgoing.length > 0 || stage.outputMerges.length > 0 ? (
-          <DownstreamLanes
-            itemId={stage.primaryOutput}
-            lanes={stage.outputMerges}
-            edges={outgoing}
-          />
-        ) : null}
-      </div>
-    </article>
-  );
 }
 
 export function ResultsPanel({
@@ -375,47 +168,7 @@ export function ResultsPanel({
         </Section>
 
         <Section title="Targets" hint="Planned output after minima and balance">
-          {result.targets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No targets selected.</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {result.targets.map((t) => (
-                <div
-                  key={t.item}
-                  id={`target-${t.item}`}
-                  className={cn(
-                    "scroll-mt-4 flex flex-col gap-2 rounded-xl bg-card/80 p-4 transition-[box-shadow,background-color] duration-300",
-                    changedRing(changes.targets.has(t.item)),
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <p className="font-heading font-semibold">{itemById[t.item].name}</p>
-                      {changes.targets.has(t.item) ? (
-                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                          updated
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="font-heading text-xl font-bold tabular-nums text-primary">
-                      {formatRate(t.totalRate)}
-                      <span className="ml-0.5 text-xs font-medium text-muted-foreground">/min</span>
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs tabular-nums text-muted-foreground">
-                    <span className="rounded-md bg-muted px-2 py-0.5">
-                      min {formatRate(t.plannedMinRate)}
-                    </span>
-                    {t.extraRate > 1e-6 ? (
-                      <span className="rounded-md bg-accent px-2 py-0.5 text-accent-foreground">
-                        +{formatRate(t.extraRate)} leftover
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <TargetsSummary targets={result.targets} changedItems={changes.targets} />
         </Section>
 
         <Section title="Production stages" hint="Machine banks and where each belt goes">
