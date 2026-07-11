@@ -12,15 +12,15 @@ is involved.
 The full exact pipeline is re-implemented natively, mirroring the TypeScript
 module-for-module:
 
-| Rust module        | TypeScript source                          |
-| ------------------ | ------------------------------------------ |
-| `rational.rs`      | `exact/rational.ts` (BigInt rationals)     |
-| `graph.rs`         | `exact/recipe-graph.ts`                    |
-| `underclocks.rs`   | `exact/underclocks.ts`                     |
-| `bounds.rs`        | `exact/bounds.ts`                          |
-| `patterns.rs`      | `exact/bank-patterns.ts`                   |
-| `optimizer.rs`     | `exact/optimizer.ts` + `integer-linear.ts` |
-| `validation.rs`    | `exact/validation.ts`                      |
+| Rust module      | TypeScript source                          |
+| ---------------- | ------------------------------------------ |
+| `rational.rs`    | `exact/rational.ts` (BigInt rationals)     |
+| `graph.rs`       | `exact/recipe-graph.ts`                    |
+| `underclocks.rs` | `exact/underclocks.ts`                     |
+| `bounds.rs`      | `exact/bounds.ts`                          |
+| `patterns.rs`    | `exact/bank-patterns.ts`                   |
+| `optimizer.rs`   | `exact/optimizer.ts` + `integer-linear.ts` |
+| `validation.rs`  | `exact/validation.ts`                      |
 
 The model, the six-phase lexicographic objective hierarchy, the
 dominance/symmetry reductions, the post-phase domain tightening, the
@@ -62,11 +62,11 @@ brute-force oracle and cross-engine equality of the full objective vector.
 
 Performance (this machine, single run):
 
-| Scenario | or-tools CP-SAT (8 threads) | Rust/Pumpkin (1 thread) |
-| --- | --- | --- |
-| Quickwire 200/min (native) | — | ~2–3 s |
-| Quickwire 200/min (browser WASM) | ~1.4 s | ~4.6 s |
-| Full factory benchmark (`BROWSER_FACTORY_BENCHMARK_INPUT`) | ~68 s (Node) | phase 1 ≈ 34 s, phase 2 ≈ 6 s, **phase 3 did not finish in 38 min** |
+| Scenario                                                   | or-tools CP-SAT (8 threads) | Rust/Pumpkin (1 thread)                                             |
+| ---------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------- |
+| Quickwire 200/min (native)                                 | —                           | ~2–3 s                                                              |
+| Quickwire 200/min (browser WASM)                           | ~1.4 s                      | ~4.6 s                                                              |
+| Full factory benchmark (`BROWSER_FACTORY_BENCHMARK_INPUT`) | ~68 s (Node)                | phase 1 ≈ 34 s, phase 2 ≈ 6 s, **phase 3 did not finish in 38 min** |
 
 The full-factory phase 3 (minimize physical machines over ~2900 bank-pattern
 variables) is where CP-SAT's LP relaxation, parallel portfolio, and core-guided
