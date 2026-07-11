@@ -9,7 +9,14 @@ import type { ExactSolveProgress } from "@/lib/solver";
 import { loadPlannerState, savePlannerState } from "@/lib/planner-storage";
 import { solveExact } from "@/lib/solver";
 import { diffSolveResults, emptyChanges } from "@/lib/solver/diff";
-import type { ExcessSpec, PlannerInput, SolveResult, TargetSpec } from "@/lib/solver/types";
+import { excessPanelItems, pruneExcessFloors } from "@/lib/solver/chain-intermediates";
+import type {
+  ExcessResult,
+  ExcessSpec,
+  PlannerInput,
+  SolveResult,
+  TargetSpec,
+} from "@/lib/solver/types";
 import {
   completedPhaseTiming,
   readSolverRuntimeInfo,
@@ -93,6 +100,41 @@ export function PlannerApp() {
   const draftFingerprint = useMemo(() => inputFingerprint(draftInput), [draftInput]);
 
   const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
+
+  const excessItemIds = useMemo(
+    () => excessPanelItems(targets, excessFloors),
+    [targets, excessFloors],
+  );
+
+  const excessRows: ExcessResult[] = useMemo(() => {
+    if (result && !dirty) {
+      const solvedByItem = new Map(result.excess.map((row) => [row.item, row]));
+      return excessItemIds.map((item) => {
+        const solved = solvedByItem.get(item);
+        return (
+          solved ?? {
+            item,
+            requestedRate: excessFloors[item] ?? 0,
+            rate: 0,
+            autoRate: 0,
+          }
+        );
+      });
+    }
+    return excessItemIds.map((item) => ({
+      item,
+      requestedRate: excessFloors[item] ?? 0,
+      rate: 0,
+      autoRate: 0,
+    }));
+  }, [excessItemIds, result, dirty, excessFloors]);
+
+  useEffect(() => {
+    setExcessFloors((prev) => {
+      const next = pruneExcessFloors(targets, prev);
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [targets]);
 
   useEffect(() => {
     const saved = loadPlannerState();
@@ -251,7 +293,7 @@ export function PlannerApp() {
           <BeltTierPanel maxBeltCapacity={maxBeltCapacity} onChange={setMaxBeltCapacity} />
           <TargetsPanel targets={targets} onChange={setTargets} />
           <ExcessPanel
-            excess={result?.excess ?? []}
+            excess={excessRows}
             floors={excessFloors}
             onFloorChange={(item, rate) =>
               setExcessFloors((prev) => ({

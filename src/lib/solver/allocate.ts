@@ -7,6 +7,7 @@ import {
 } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
 import { addRate, exactRawCoefficients, expandFactoryPlan, type RateMap } from "./bom";
+import { collectChainIntermediates } from "./chain-intermediates";
 import { ALLOWED_CLOCKS, complexityScore } from "./constraints";
 import { buildFactoryNetwork } from "./network";
 import { quantizeItemRateBeltAware } from "./pack-banks";
@@ -105,25 +106,6 @@ function leftoverFromPlan(
     leftover.set(id, Math.max(0, (available.get(id) ?? 0) - (raws.get(id) ?? 0)));
   }
   return leftover;
-}
-
-function collectChainIntermediates(roots: ItemId[]): ItemId[] {
-  const seen = new Set<ItemId>();
-  const stack = [...roots];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const item = itemById[id];
-    if (!item || item.isRaw) continue;
-    const recipe = getRecipeForProduct(id);
-    if (!recipe) continue;
-    for (const input of recipe.inputs) {
-      if (!itemById[input.item]?.isRaw) stack.push(input.item);
-    }
-  }
-  const rootSet = new Set(roots);
-  return [...seen].filter((id) => !itemById[id]?.isRaw && !rootSet.has(id));
 }
 
 function isIngotItem(itemId: ItemId): boolean {
