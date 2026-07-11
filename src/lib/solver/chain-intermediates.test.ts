@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  chainIntermediariesForPlanner,
+  chainIntermediariesForTargets,
   collectChainIntermediates,
   excessPanelItems,
   pruneExcessFloors,
@@ -23,30 +23,32 @@ describe("collectChainIntermediates", () => {
   });
 });
 
-describe("chainIntermediariesForPlanner", () => {
+describe("chainIntermediariesForTargets", () => {
   it("derives intermediaries from end products", () => {
-    const ids = chainIntermediariesForPlanner([{ item: "motor", minRate: 5, weight: 50 }], {});
+    const ids = chainIntermediariesForTargets([{ item: "motor", minRate: 5, weight: 50 }]);
     expect(ids).toContain("rotor");
     expect(ids).toContain("stator");
     expect(ids).not.toContain("iron-ingot");
   });
 
-  it("walks upstream from excess floor roots", () => {
-    const ids = chainIntermediariesForPlanner([], { rotor: 10 });
-    expect(ids).not.toContain("rotor");
-    expect(ids).toContain("screw");
+  it("returns empty when there are no targets", () => {
+    expect(chainIntermediariesForTargets([])).toEqual([]);
   });
 
-  it("returns empty when there are no roots", () => {
-    expect(chainIntermediariesForPlanner([], {})).toEqual([]);
+  it("keeps a stable order when only floor values change", () => {
+    const targets = [{ item: "motor" as const, minRate: 1, weight: 50 }];
+    const before = chainIntermediariesForTargets(targets);
+    const after = chainIntermediariesForTargets(targets);
+    expect(after).toEqual(before);
   });
 });
 
 describe("excessPanelItems", () => {
-  it("keeps floored roots visible even when excluded from intermediaries", () => {
-    const ids = excessPanelItems([{ item: "motor", minRate: 1, weight: 50 }], { rotor: 10 });
+  it("lists only production-chain intermediaries", () => {
+    const ids = excessPanelItems([{ item: "motor", minRate: 1, weight: 50 }]);
     expect(ids).toContain("rotor");
     expect(ids).toContain("stator");
+    expect(ids).not.toContain("motor");
   });
 });
 

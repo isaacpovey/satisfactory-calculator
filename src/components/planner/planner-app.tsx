@@ -101,9 +101,20 @@ export function PlannerApp() {
 
   const dirty = computedFingerprint !== null && draftFingerprint !== computedFingerprint;
 
-  const excessItemIds = useMemo(
-    () => excessPanelItems(targets, excessFloors),
-    [targets, excessFloors],
+  const excessItemIds = useMemo(() => excessPanelItems(targets), [targets]);
+
+  const applyGlobalMinimum = useCallback(
+    (rate: number) => {
+      if (!Number.isFinite(rate) || rate < 0) return;
+      setExcessFloors((prev) => {
+        const next = { ...prev };
+        for (const id of excessItemIds) {
+          next[id] = rate;
+        }
+        return next;
+      });
+    },
+    [excessItemIds],
   );
 
   const excessRows: ExcessResult[] = useMemo(() => {
@@ -295,6 +306,7 @@ export function PlannerApp() {
           <ExcessPanel
             excess={excessRows}
             floors={excessFloors}
+            onApplyGlobalMinimum={applyGlobalMinimum}
             onFloorChange={(item, rate) =>
               setExcessFloors((prev) => ({
                 ...prev,

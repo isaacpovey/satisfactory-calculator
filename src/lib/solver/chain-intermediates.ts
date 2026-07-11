@@ -1,6 +1,7 @@
 import { itemById } from "@/data/items";
 import { getRecipeForProduct } from "@/data/recipes";
 import type { ItemId } from "@/data/types";
+import { recipeDepth } from "./constraints";
 import type { TargetSpec } from "./types";
 
 /** Walk recipe trees from `roots` and return manufactured upstream parts (not roots). */
@@ -23,33 +24,23 @@ export function collectChainIntermediates(roots: ItemId[]): ItemId[] {
   return [...seen].filter((id) => !itemById[id]?.isRaw && !rootSet.has(id));
 }
 
-/** Chain intermediaries for excess floors: upstream parts of targets and excess roots. */
-export function chainIntermediariesForPlanner(
-  targets: TargetSpec[],
-  excessFloors: Partial<Record<ItemId, number>>,
-): ItemId[] {
-  const roots = [...targets.map((t) => t.item), ...(Object.keys(excessFloors) as ItemId[])];
+function compareChainItems(a: ItemId, b: ItemId): number {
+  const depthDiff = recipeDepth(a) - recipeDepth(b);
+  if (depthDiff !== 0) return depthDiff;
+  return (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b);
+}
+
+/** Manufactured upstream parts for the current end-product chains (stable order). */
+export function chainIntermediariesForTargets(targets: TargetSpec[]): ItemId[] {
+  const roots = targets.map((t) => t.item);
   return collectChainIntermediates(roots)
     .filter((id) => !itemById[id]?.isIngot)
-    .toSorted((a, b) => (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b));
+    .toSorted(compareChainItems);
 }
 
-function sortItemIds(ids: Iterable<ItemId>): ItemId[] {
-  return [...ids].toSorted((a, b) =>
-    (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b),
-  );
-}
-
-/** Items shown in the excess panel: chain intermediaries plus floored roots. */
-export function excessPanelItems(
-  targets: TargetSpec[],
-  excessFloors: Partial<Record<ItemId, number>>,
-): ItemId[] {
-  const ids = new Set<ItemId>(chainIntermediariesForPlanner(targets, excessFloors));
-  for (const id of Object.keys(excessFloors) as ItemId[]) {
-    ids.add(id);
-  }
-  return sortItemIds(ids);
+/** Items shown in the excess panel: production-chain intermediaries only. */
+export function excessPanelItems(targets: TargetSpec[]): ItemId[] {
+  return chainIntermediariesForTargets(targets);
 }
 
 /** Drop spare-part floors for items no longer on any target chain. */
