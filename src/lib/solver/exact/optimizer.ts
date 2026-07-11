@@ -39,8 +39,11 @@ import { validateExactSolution } from "./validation";
 
 const ZERO_BIGINT = BigInt(0);
 const ONE_BIGINT = BigInt(1);
+const TWO_BIGINT = BigInt(2);
 const ZERO = new Rational(ZERO_BIGINT);
 const MAX_SEARCH_WORKERS = 8;
+/** Zero-based index of the combined splitter/merger device objective. */
+const DEVICE_OBJECTIVE_INDEX = 4;
 
 /**
  * Uses all but one logical core for search, capped to avoid excessive browser
@@ -105,11 +108,12 @@ interface ModelState {
   readonly patterns: readonly PatternVariable[];
   readonly targetVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
   readonly excessVariables: ReadonlyMap<ItemId, WithdrawalVariable>;
-  readonly routingVariables: readonly RoutingVariable[];
-  readonly objectives: readonly {
+  routingVariables: RoutingVariable[];
+  routingInstalled: boolean;
+  objectives: {
     readonly label: string;
     readonly maximize: boolean;
-    readonly terms: readonly RationalLinearTerm[];
+    terms: RationalLinearTerm[];
   }[];
 }
 
@@ -525,10 +529,6 @@ function addRoutingVariables(
     if (!producer) throw new Error(`Missing producer for routed item: ${item.id}`);
     const outputPatterns = patterns.filter((entry) => entry.pattern.recipeId === producer.id);
     const outputLaneExpression = LinearExpr.sum(outputPatterns.map((entry) => entry.variable));
-    const outputLaneUpperBound = outputPatterns.reduce(
-      (total, entry) => total + entry.upperBound,
-      ZERO_BIGINT,
-    );
     const destinations: BoolVar[] = input.graph.recipes
       .filter((recipe) => recipe.inputs.some((inputRate) => inputRate.item === item.id))
       .map((recipe) => {
@@ -542,42 +542,138 @@ function addRoutingVariables(
     if (excessActivity) destinations.push(excessActivity);
 
     const destinationUpperBound = BigInt(destinations.length);
-    const routingUpperBound = (destinationUpperBound + ONE_BIGINT) / BigInt(2);
+    const routingUpperBound = (destinationUpperBound + ONE_BIGINT) / TWO_BIGINT;
+    if (destinationUpperBound === ZERO_BIGINT) {
+      const routing = model.newIntVar(0, 0, `routing_devices_${item.id}`);
+      routingVariables.push({ item: item.id, variable: routing, upperBound: ZERO_BIGINT });
+      continue;
+    }
+
+    const destinationExpression = LinearExpr.sum(destinations);
+    const destinationLaneDifference =
+      LinearExpr.from(destinationExpression).minus(outputLaneExpression);
+    const posDiffUpperBound = checkedSafeInteger(
+      destinationUpperBound,
+      `${item.id} positive routing-difference upper bound`,
+    );
+    const posDiff = model.newIntVar(0, posDiffUpperBound, `routing_pos_diff_${item.id}`);
+    model.addMaxEquality(posDiff, [0, destinationLaneDifference]);
     const routing = model.newIntVar(
       0,
       checkedSafeInteger(routingUpperBound, `${item.id} routing-device upper bound`),
       `routing_devices_${item.id}`,
     );
-    const routingNeeded = model.newBoolVar(`routing_needed_${item.id}`);
-    if (destinationUpperBound === ZERO_BIGINT) {
-      model.addEquality(routingNeeded, 0);
-      model.addEquality(routing, 0);
-    } else {
-      const destinationExpression = LinearExpr.sum(destinations);
-      const destinationLaneDifference =
-        LinearExpr.from(destinationExpression).minus(outputLaneExpression);
-      model
-        .addLinearConstraint(
-          destinationLaneDifference,
-          1,
-          checkedSafeInteger(destinationUpperBound, `${item.id} destination upper bound`),
-        )
-        .onlyEnforceIf(routingNeeded);
-      model
-        .addLinearConstraint(
-          destinationLaneDifference,
-          checkedSafeInteger(-outputLaneUpperBound, `${item.id} lane-difference lower bound`),
-          0,
-        )
-        .onlyEnforceIf(routingNeeded.not());
-      model.addEquality(routing, 0).onlyEnforceIf(routingNeeded.not());
-      model
-        .addLinearConstraint(LinearExpr.term(routing, 2).minus(destinationLaneDifference), 0, 1)
-        .onlyEnforceIf(routingNeeded);
-    }
+    // routing = ceil(max(0, destinations - outputLanes) / 2)
+    model.addLinearConstraint(LinearExpr.term(routing, 2).minus(posDiff), 0, 1);
     routingVariables.push({ item: item.id, variable: routing, upperBound: routingUpperBound });
   }
   return routingVariables;
+}
+
+function internalDeviceObjectiveTerms(
+  input: ExactOptimizerInput,
+  patterns: readonly PatternVariable[],
+): RationalLinearTerm[] {
+  return patterns.map((entry) => {
+    const recipe = input.graph.recipeById.get(entry.pattern.recipeId);
+    if (!recipe) throw new Error(`Missing recipe for bank pattern: ${entry.pattern.recipeId}`);
+    return {
+      variable: entry.variable,
+      coefficient: new Rational(internalDevices(entry.pattern, recipe.inputs.length)),
+      upperBound: entry.upperBound,
+    };
+  });
+}
+
+function deviceObjectiveTerms(
+  input: ExactOptimizerInput,
+  patterns: readonly PatternVariable[],
+  routingVariables: readonly RoutingVariable[],
+): RationalLinearTerm[] {
+  const routingDeviceTerms = routingVariables.map((entry) => ({
+    variable: entry.variable,
+    coefficient: new Rational(ONE_BIGINT),
+    upperBound: entry.upperBound,
+  }));
+  return [...internalDeviceObjectiveTerms(input, patterns), ...routingDeviceTerms];
+}
+
+function prepareRoutingInstall(
+  state: ModelState,
+  input: ExactOptimizerInput,
+): Pick<ModelState, "routingVariables" | "objectives" | "routingInstalled"> | null {
+  if (state.routingInstalled) return null;
+  const routingVariables = addRoutingVariables(
+    input,
+    state.model,
+    state.patterns,
+    state.targetVariables,
+    state.excessVariables,
+  );
+  if (!state.objectives[DEVICE_OBJECTIVE_INDEX]) {
+    throw new Error("Missing device-minimization objective");
+  }
+  const deviceTerms = deviceObjectiveTerms(input, state.patterns, routingVariables);
+  return {
+    routingVariables: [...routingVariables],
+    objectives: state.objectives.map((objective, index) =>
+      index === DEVICE_OBJECTIVE_INDEX ? { ...objective, terms: deviceTerms } : objective,
+    ),
+    routingInstalled: true,
+  };
+}
+
+function computeFixedDestinationCount(
+  state: ModelState,
+  input: ExactOptimizerInput,
+  solver: CpSolver,
+  itemId: ItemId,
+): number {
+  let destinations = 0;
+  for (const recipe of input.graph.recipes) {
+    if (!recipe.inputs.some((inputRate) => inputRate.item === itemId)) continue;
+    const recipePatterns = state.patterns.filter((entry) => entry.pattern.recipeId === recipe.id);
+    const laneSum = recipePatterns.reduce((total, entry) => total + solver.value(entry.variable), 0);
+    if (laneSum > 0) destinations++;
+  }
+  const target = state.targetVariables.get(itemId);
+  if (target && solver.value(target.variable) > 0) destinations++;
+  const excess = state.excessVariables.get(itemId);
+  if (excess && solver.value(excess.variable) > 0) destinations++;
+  return destinations;
+}
+
+function computeRoutingHint(
+  state: ModelState,
+  input: ExactOptimizerInput,
+  solver: CpSolver,
+  itemId: ItemId,
+): number {
+  const producer = input.graph.producerByItem.get(itemId);
+  if (!producer) return 0;
+  const outputPatterns = state.patterns.filter((entry) => entry.pattern.recipeId === producer.id);
+  let outputLanes = 0;
+  for (const entry of outputPatterns) {
+    const value = solver.value(entry.variable);
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`Non-integral bank hint for ${entry.pattern.recipeId}: ${value}`);
+    }
+    outputLanes += value;
+  }
+
+  const fixedDestinations = computeFixedDestinationCount(state, input, solver, itemId);
+  const additionalLanes = fixedDestinations - outputLanes;
+  return additionalLanes > 0 ? Math.floor((additionalLanes + 1) / 2) : 0;
+}
+
+function installRoutingHints(
+  state: ModelState,
+  input: ExactOptimizerInput,
+  solver: CpSolver,
+): void {
+  for (const entry of state.routingVariables) {
+    state.model.addHint(entry.variable, computeRoutingHint(state, input, solver, entry.item));
+  }
 }
 
 function objectiveTerms(
@@ -615,15 +711,7 @@ function objectiveTerms(
     coefficient: new Rational(ONE_BIGINT),
     upperBound: entry.upperBound,
   }));
-  const internalDeviceTerms = patterns.map((entry) => {
-    const recipe = input.graph.recipeById.get(entry.pattern.recipeId);
-    if (!recipe) throw new Error(`Missing recipe for bank pattern: ${entry.pattern.recipeId}`);
-    return {
-      variable: entry.variable,
-      coefficient: new Rational(internalDevices(entry.pattern, recipe.inputs.length)),
-      upperBound: entry.upperBound,
-    };
-  });
+  const internalDeviceTerms = internalDeviceObjectiveTerms(input, patterns);
   const routingDeviceTerms = routingVariables.map((entry) => ({
     variable: entry.variable,
     coefficient: new Rational(ONE_BIGINT),
@@ -660,26 +748,20 @@ function buildModel(
   const patterns = createPatternVariables(input, model, beltCapacity);
   addRawConstraints(input, model, production);
   const withdrawals = addConservationRows(input, model, production, targets, excess);
-  const routingVariables = addRoutingVariables(
-    input,
-    model,
-    patterns,
-    withdrawals.targetVariables,
-    withdrawals.excessVariables,
-  );
   return {
     model,
     production,
     patterns,
     ...withdrawals,
-    routingVariables,
+    routingVariables: [],
+    routingInstalled: false,
     objectives: objectiveTerms(
       input,
       production,
       patterns,
       targets,
       withdrawals.targetVariables,
-      routingVariables,
+      [],
     ),
   };
 }
@@ -880,6 +962,14 @@ async function solveLexicographically(
 
   for (let index = 0; index < state.objectives.length; index++) {
     if (input.signal?.aborted) return { solver: lastSolver, status: "CANCELLED" };
+    if (index === DEVICE_OBJECTIVE_INDEX) {
+      const routingInstall = prepareRoutingInstall(state, input);
+      if (routingInstall) Object.assign(state, routingInstall);
+      if (lastSolver) {
+        installCompleteSolutionHint(state.model, lastSolver);
+        installRoutingHints(state, input, lastSolver);
+      }
+    }
     const objective = state.objectives[index]!;
     const progressBase = {
       phase: index + 1,
@@ -905,7 +995,7 @@ async function solveLexicographically(
       numWorkers: searchWorkers,
       randomSeed: 1,
       repairHint: true,
-      logSearchProgress: typeof globalThis.window !== "undefined",
+      logSearchProgress: false,
       logToStdout: false,
     });
     const phaseMs = performance.now() - phaseStarted;
