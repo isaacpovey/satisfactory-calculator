@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPlannerState, PLANNER_STORAGE_KEY, savePlannerState } from "./planner-storage";
+import {
+  loadPlannerState,
+  hasStoredPlannerState,
+  PLANNER_STORAGE_KEY,
+  savePlannerState,
+} from "./planner-storage";
 
 function installMemoryStorage() {
   const store = new Map<string, string>();
@@ -134,5 +139,21 @@ describe("planner-storage", () => {
     );
 
     expect(loadPlannerState()?.targets).toEqual([{ item: "motor", minRate: 2, weight: 60 }]);
+  });
+
+  it("detects when a saved planner state is present", () => {
+    expect(hasStoredPlannerState()).toBe(false);
+
+    window.localStorage.setItem(
+      PLANNER_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        rawAvailable: { "iron-ore": 120 },
+        targets: [{ item: "motor", minRate: 2, weight: 60 }],
+        excessFloors: {},
+      }),
+    );
+
+    expect(hasStoredPlannerState()).toBe(true);
   });
 });

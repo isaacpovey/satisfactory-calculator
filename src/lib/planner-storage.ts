@@ -70,6 +70,20 @@ function sanitizeExcessFloors(value: unknown): Partial<Record<ItemId, number>> |
   return out;
 }
 
+export function hasStoredPlannerState(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(PLANNER_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as unknown;
+    return (
+      !!parsed && typeof parsed === "object" && (parsed as Record<string, unknown>).version === 1
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function loadPlannerState(): PlannerPersistedState | null {
   if (typeof window === "undefined") return null;
   try {
