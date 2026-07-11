@@ -329,6 +329,13 @@ export function PlannerApp() {
       <footer className="border-t border-foreground/8 pt-4 text-xs text-muted-foreground">
         Exact recipe-specific clocks · globally optimal machine banks · conserved item flows ·
         demand-balanced manifolds · saved in this browser ·{" "}
+        <Link
+          href="/prototype"
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          preview new results UI (prototype)
+        </Link>
+        {" · "}
         <Link href="/benchmark" className="underline underline-offset-2 hover:text-foreground">
           solver benchmark
         </Link>
